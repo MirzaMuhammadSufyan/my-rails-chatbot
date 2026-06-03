@@ -1,0 +1,21 @@
+<h1>Rooms</h1>
+<p class="page-sub">Signed in as <strong><%= current_user_name %></strong> · <%= link_to "General chat", root_path %></p>
+
+<div class="card">
+  <ul class="room-list">
+    <% @rooms.each do |room| %>
+      <li><%= link_to room.name, room %></li>
+    <% end %>
+  </ul>
+</div>
+
+<div class="card">
+  <h2>Create room</h2>
+  <%= form_with model: Room.new, url: rooms_path, local: true do |f| %>
+    <div class="field">
+      <%= f.label :name, "Room name" %>
+      <%= f.text_field :name, required: true, placeholder: "e.g. Team" %>
+    </div>
+    <%= f.submit "Create", class: "btn" %>
+  <% end %>
+</div>

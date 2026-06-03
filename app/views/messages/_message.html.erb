@@ -1,0 +1,32 @@
+<article id="<%= dom_id(message) %>" class="message" data-message-id="<%= message.id %>">
+  <header class="message-meta">
+    <strong><%= message.user_name %></strong>
+    <time datetime="<%= message.created_at.iso8601 %>"><%= message.created_at.strftime("%b %-d, %H:%M") %></time>
+  </header>
+
+  <div class="message-body">
+    <% if message.content_type == "text" && message.body.present? %>
+      <p><%= h(message.display_body) %></p>
+    <% end %>
+
+    <% if message.media.attached? %>
+      <% case message.content_type %>
+      <% when "image" %>
+        <%= image_tag message.media, alt: "shared image" %>
+        <% if message.body.present? %><p><%= h(message.display_body) %></p><% end %>
+      <% when "video" %>
+        <video controls>
+          <source src="<%= url_for(message.media) %>" type="<%= message.media.content_type %>">
+        </video>
+        <% if message.body.present? %><p><%= h(message.display_body) %></p><% end %>
+      <% when "audio" %>
+        <audio controls>
+          <source src="<%= url_for(message.media) %>" type="<%= message.media.content_type %>">
+        </audio>
+        <% if message.body.present? %><p><%= h(message.display_body) %></p><% end %>
+      <% else %>
+        <p><%= link_to message.media.filename, url_for(message.media) %></p>
+      <% end %>
+    <% end %>
+  </div>
+</article>

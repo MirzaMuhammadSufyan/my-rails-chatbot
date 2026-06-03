@@ -1,0 +1,46 @@
+<div class="chat">
+  <header>
+    <h1><%= @room.name %></h1>
+    <p class="page-sub">
+      <%= current_user_name %> · <%= link_to "All rooms", rooms_path %>
+    </p>
+  </header>
+
+  <div id="messages" class="chat-messages" data-chat-room data-room-id="<%= @room.id %>">
+    <%= render @messages %>
+  </div>
+
+  <div class="chat-compose">
+    <%= form_with url: room_messages_path(@room), method: :post, local: true, html: { id: "chat-form", enctype: "multipart/form-data" } do %>
+      <div class="field">
+        <label for="message_body">Message</label>
+        <textarea name="message[body]" id="message_body" rows="3" placeholder="Type a message… 😀"></textarea>
+      </div>
+
+      <div class="attach-row">
+        <label>
+          Image
+          <input type="file" name="message[media]" id="message_media_image" accept="image/*">
+        </label>
+        <label>
+          Video
+          <input type="file" name="message[media]" id="message_media_video" accept="video/*">
+        </label>
+        <label>
+          Audio file
+          <input type="file" name="message[media]" id="message_media_audio" accept="audio/*">
+        </label>
+      </div>
+
+      <div class="voice-row">
+        <button type="button" id="record-voice" class="btn btn-secondary">Record</button>
+        <button type="button" id="stop-voice" class="btn btn-secondary" disabled>Stop</button>
+        <span id="voice-status"></span>
+      </div>
+
+      <div class="compose-actions">
+        <button type="submit" id="send-message" class="btn">Send</button>
+      </div>
+    <% end %>
+  </div>
+</div>

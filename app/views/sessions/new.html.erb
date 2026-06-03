@@ -1,0 +1,16 @@
+<h1>Join chat</h1>
+<p class="page-sub">Pick a display name to continue.</p>
+
+<div class="card">
+  <% if flash[:alert] %>
+    <p class="alert"><%= flash[:alert] %></p>
+  <% end %>
+
+  <%= form_with url: session_path, method: :post, local: true do %>
+    <div class="field">
+      <label for="user_name">Your name</label>
+      <input type="text" name="user_name" id="user_name" required maxlength="50" autocomplete="nickname" placeholder="e.g. Alex">
+    </div>
+    <button type="submit" class="btn">Enter chat</button>
+  <% end %>
+</div>
