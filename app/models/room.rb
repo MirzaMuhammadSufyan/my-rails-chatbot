@@ -6,4 +6,8 @@ class Room < ApplicationRecord
   def self.general
     find_or_create_by!(name: "General")
   end
+
+  def general?
+    name == "General"
+  end
 end

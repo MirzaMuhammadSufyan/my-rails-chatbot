@@ -1,46 +1,104 @@
-<div class="chat">
-  <header>
-    <h1><%= @room.name %></h1>
-    <p class="page-sub">
-      <%= current_user_name %> · <%= link_to "All rooms", rooms_path %>
-    </p>
+<main class="chat-app">
+  <header class="chat-topbar">
+    <%= link_to rooms_path, class: "chat-topbar-back", aria: { label: "Back to rooms" } do %>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+    <% end %>
+    <div class="chat-topbar-info">
+      <h1><%= @room.name %></h1>
+      <p>Live · as <%= current_user_name %></p>
+    </div>
+    <span class="chat-topbar-live" aria-label="Connected">Live</span>
   </header>
 
-  <div id="messages" class="chat-messages" data-chat-room data-room-id="<%= @room.id %>">
+  <div id="messages" class="chat-feed" data-chat-room data-room-id="<%= @room.id %>" data-current-user="<%= current_user_name %>">
     <%= render @messages %>
   </div>
 
-  <div class="chat-compose">
-    <%= form_with url: room_messages_path(@room), method: :post, local: true, html: { id: "chat-form", enctype: "multipart/form-data" } do %>
-      <div class="field">
-        <label for="message_body">Message</label>
-        <textarea name="message[body]" id="message_body" rows="3" placeholder="Type a message… 😀"></textarea>
+  <footer class="chat-dock">
+    <%= form_with url: room_messages_path(@room), method: :post, local: true, html: { id: "chat-form", class: "chat-form", enctype: "multipart/form-data" } do %>
+      <div id="pending-media-preview" class="pending-media-preview" hidden>
+        <button type="button" id="pending-media-cancel" class="pending-media-cancel" aria-label="Cancel attachment">&times;</button>
+        <div id="pending-media-visual" class="pending-media-visual"></div>
+        <p id="pending-media-name" class="pending-media-name"></p>
+        <p class="pending-media-hint">Enter to send · Esc to cancel</p>
+      </div>
+      <div id="emoji-picker" class="emoji-panel" role="listbox" aria-label="Emoji picker" hidden></div>
+
+      <div id="voice-recording-ui" class="voice-recording-ui" hidden>
+        <button type="button" id="voice-cancel" class="voice-action-btn" aria-label="Cancel recording">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+        <div class="voice-recording-main">
+          <span class="voice-rec-dot" aria-hidden="true"></span>
+          <span id="voice-timer" class="voice-timer">0:00</span>
+          <div id="voice-waveform" class="voice-waveform" aria-hidden="true"></div>
+        </div>
+        <button type="button" id="stop-voice" class="voice-action-btn voice-action-btn--send" aria-label="Stop recording">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
       </div>
 
-      <div class="attach-row">
-        <label>
-          Image
-          <input type="file" name="message[media]" id="message_media_image" accept="image/*">
-        </label>
-        <label>
-          Video
-          <input type="file" name="message[media]" id="message_media_video" accept="video/*">
-        </label>
-        <label>
-          Audio file
-          <input type="file" name="message[media]" id="message_media_audio" accept="audio/*">
-        </label>
+      <div id="voice-draft-ui" class="voice-draft-ui" hidden>
+        <button type="button" id="voice-discard" class="voice-action-btn" aria-label="Delete voice message">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+        </button>
+        <div class="voice-draft-main">
+          <button type="button" id="voice-play-preview" class="voice-play-btn" aria-label="Play preview">
+            <span class="voice-play-icon" aria-hidden="true"></span>
+          </button>
+          <div id="voice-draft-wave" class="voice-draft-wave" aria-hidden="true"></div>
+          <span id="voice-draft-duration" class="voice-draft-duration">0:00</span>
+        </div>
+        <p class="voice-draft-hint">Enter to send</p>
+        <button type="submit" class="send-btn voice-draft-send" aria-label="Send voice message">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        </button>
       </div>
 
-      <div class="voice-row">
-        <button type="button" id="record-voice" class="btn btn-secondary">Record</button>
-        <button type="button" id="stop-voice" class="btn btn-secondary" disabled>Stop</button>
-        <span id="voice-status"></span>
-      </div>
+      <div class="chat-composer" id="chat-composer">
+        <button type="button" id="emoji-toggle" class="icon-btn" aria-label="Emoji" aria-expanded="false" aria-controls="emoji-picker">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        </button>
 
-      <div class="compose-actions">
-        <button type="submit" id="send-message" class="btn">Send</button>
+        <label class="sr-only" for="message_body">Message</label>
+        <textarea name="message[body]" id="message_body" rows="1" placeholder="Message… (Enter to send)"></textarea>
+
+        <label class="icon-btn icon-btn--attach" aria-label="Attach image">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <input type="file" id="message_media_image" accept="image/*" data-media-input data-kind="image">
+        </label>
+
+        <label class="icon-btn icon-btn--attach" aria-label="Attach video">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          <input type="file" id="message_media_video" accept="video/*" data-media-input data-kind="video">
+        </label>
+
+        <label class="icon-btn icon-btn--attach" aria-label="Attach audio file">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          <input type="file" id="message_media_audio" accept="audio/*" data-media-input data-kind="audio">
+        </label>
+
+        <label class="icon-btn icon-btn--attach" aria-label="Attach document">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+          <input type="file" id="message_media_file" accept="*/*" data-media-input data-kind="file">
+        </label>
+
+        <button type="button" id="record-voice" class="icon-btn" aria-label="Record voice">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+        </button>
+
+        <button type="submit" id="send-message" class="send-btn" aria-label="Send message">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        </button>
       </div>
     <% end %>
+  </footer>
+
+  <div id="media-lightbox" class="media-lightbox" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="Media viewer">
+    <button type="button" class="media-lightbox-backdrop" aria-label="Close"></button>
+    <button type="button" class="media-lightbox-close" aria-label="Close">&times;</button>
+    <div class="media-lightbox-body">
+      <p class="media-lightbox-zoom-hint" id="media-lightbox-hint" hidden>Ctrl + scroll to zoom (up to 300%)</p>
+    </div>
   </div>
-</div>
+</main>

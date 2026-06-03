@@ -1,32 +1,80 @@
-<article id="<%= dom_id(message) %>" class="message" data-message-id="<%= message.id %>">
-  <header class="message-meta">
-    <strong><%= message.user_name %></strong>
-    <time datetime="<%= message.created_at.iso8601 %>"><%= message.created_at.strftime("%b %-d, %H:%M") %></time>
-  </header>
+<% own = defined?(current_user_name) && current_user_name.present? && message.user_name == current_user_name %>
+<% initial = message.user_name.to_s.strip.first&.upcase || "?" %>
+<% hue = message.user_name.to_s.bytes.sum % 360 %>
+<% visual = message.media.attached? && message.content_type.in?(%w[image video]) %>
+<% audio_msg = message.media.attached? && message.content_type == "audio" %>
+<% media_url = message.media.attached? ? message_media_url(message.media) : nil %>
 
-  <div class="message-body">
-    <% if message.content_type == "text" && message.body.present? %>
-      <p><%= h(message.display_body) %></p>
+<article id="<%= dom_id(message) %>" class="msg<%= " msg--own" if own %>" data-message-id="<%= message.id %>" data-author="<%= message.user_name %>">
+  <% unless own %>
+    <span class="msg-avatar" style="--avatar-hue: <%= hue %>" aria-hidden="true"><%= initial %></span>
+  <% end %>
+
+  <div class="msg-stack">
+    <% unless own %>
+      <span class="msg-name"><%= message.user_name %></span>
     <% end %>
 
     <% if message.media.attached? %>
       <% case message.content_type %>
       <% when "image" %>
-        <%= image_tag message.media, alt: "shared image" %>
-        <% if message.body.present? %><p><%= h(message.display_body) %></p><% end %>
+        <div class="msg-bubble msg-bubble--visual">
+          <button type="button" class="msg-media-trigger" data-media-type="image" data-media-src="<%= media_url %>" aria-label="Open image full screen">
+            <%= image_tag media_url, alt: "Image", class: "msg-image", loading: "lazy" %>
+          </button>
+        </div>
       <% when "video" %>
-        <video controls>
-          <source src="<%= url_for(message.media) %>" type="<%= message.media.content_type %>">
-        </video>
-        <% if message.body.present? %><p><%= h(message.display_body) %></p><% end %>
+        <div class="msg-bubble msg-bubble--visual">
+          <button type="button" class="msg-media-trigger" data-media-type="video" data-media-src="<%= media_url %>" data-media-mime="<%= message.media.content_type %>" aria-label="Open video full screen">
+            <video class="msg-video" preload="metadata" playsinline muted aria-hidden="true">
+              <source src="<%= media_url %>" type="<%= message.media.content_type %>">
+            </video>
+            <span class="msg-media-play-badge" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 20 12 8 19 8 5"/></svg>
+            </span>
+          </button>
+        </div>
       <% when "audio" %>
-        <audio controls>
-          <source src="<%= url_for(message.media) %>" type="<%= message.media.content_type %>">
-        </audio>
-        <% if message.body.present? %><p><%= h(message.display_body) %></p><% end %>
-      <% else %>
-        <p><%= link_to message.media.filename, url_for(message.media) %></p>
+        <div class="msg-bubble msg-bubble--audio">
+          <div class="msg-voice-player" data-audio-src="<%= media_url %>" data-audio-type="<%= message.media.content_type.presence || "audio/webm" %>">
+            <button type="button" class="msg-voice-play" aria-label="Play voice message">
+              <span class="msg-voice-icon msg-voice-icon--play" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="msg-voice-scrub" aria-label="Seek voice message">
+              <span class="msg-voice-progress"></span>
+            </button>
+            <span class="msg-voice-duration">0:00</span>
+            <audio class="msg-voice-audio" preload="metadata">
+              <source src="<%= media_url %>" type="<%= message.media.content_type.presence || "audio/webm" %>">
+            </audio>
+          </div>
+        </div>
+      <% when "file" %>
+        <div class="msg-bubble msg-bubble--file">
+          <a href="<%= media_url %>" class="msg-file-card" target="_blank" rel="noopener" download>
+            <span class="msg-file-icon" aria-hidden="true">📄</span>
+            <span class="msg-file-info">
+              <span class="msg-file-name"><%= message.media.filename %></span>
+              <span class="msg-file-meta">Tap to download</span>
+            </span>
+          </a>
+        </div>
       <% end %>
     <% end %>
+
+    <% if message.body.present? %>
+      <div class="msg-bubble<%= " msg-bubble--caption" if visual || audio_msg %>">
+        <p class="msg-text"><%= h(message.display_body) %></p>
+      </div>
+    <% end %>
+
+    <div class="msg-footer">
+      <time class="msg-time" datetime="<%= message.created_at.iso8601 %>"><%= message.created_at.strftime("%H:%M") %></time>
+      <% if own %>
+        <button type="button" class="msg-delete" data-delete-url="<%= room_message_path(message.room, message) %>" aria-label="Delete message" title="Delete">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+        </button>
+      <% end %>
+    </div>
   </div>
 </article>

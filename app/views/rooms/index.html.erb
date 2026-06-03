@@ -1,21 +1,62 @@
-<h1>Rooms</h1>
-<p class="page-sub">Signed in as <strong><%= current_user_name %></strong> · <%= link_to "General chat", root_path %></p>
-
-<div class="card">
-  <ul class="room-list">
-    <% @rooms.each do |room| %>
-      <li><%= link_to room.name, room %></li>
-    <% end %>
-  </ul>
-</div>
-
-<div class="card">
-  <h2>Create room</h2>
-  <%= form_with model: Room.new, url: rooms_path, local: true do |f| %>
-    <div class="field">
-      <%= f.label :name, "Room name" %>
-      <%= f.text_field :name, required: true, placeholder: "e.g. Team" %>
+<main class="rooms-app">
+  <header class="rooms-topbar">
+    <div class="rooms-topbar-text">
+      <p class="rooms-eyebrow">Chatbot</p>
+      <h1>Rooms</h1>
     </div>
-    <%= f.submit "Create", class: "btn" %>
-  <% end %>
-</div>
+    <%= link_to "General", root_path, class: "pill-link" %>
+  </header>
+
+  <div class="rooms-body">
+    <% if flash[:notice] %>
+      <p class="flash flash--notice"><%= flash[:notice] %></p>
+    <% end %>
+    <% if flash[:alert] %>
+      <p class="flash flash--alert"><%= flash[:alert] %></p>
+    <% end %>
+
+    <p class="rooms-user">Signed in as <strong><%= current_user_name %></strong></p>
+
+    <section class="panel">
+      <h2 class="panel-title">Active rooms</h2>
+      <ul class="room-list">
+        <% @rooms.each do |room| %>
+          <li class="room-list-item">
+            <%= link_to room, class: "room-item" do %>
+              <span class="room-avatar" aria-hidden="true"><%= room.name.first.upcase %></span>
+              <span class="room-info">
+                <span class="room-name"><%= room.name %></span>
+                <span class="room-hint">Open chat</span>
+              </span>
+              <span class="room-chevron" aria-hidden="true">›</span>
+            <% end %>
+            <% unless room.general? %>
+              <%= button_to room_path(room),
+                    method: :delete,
+                    class: "room-delete-btn",
+                    title: "Delete room",
+                    aria: { label: "Delete #{room.name}" },
+                    form: {
+                      class: "room-delete-form",
+                      onsubmit: "return confirm('Delete “#{room.name}” and all its messages?')"
+                    } do %>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+              <% end %>
+            <% end %>
+          </li>
+        <% end %>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title">Create room</h2>
+      <%= form_with model: Room.new, url: rooms_path, local: true do |f| %>
+        <div class="field">
+          <%= f.label :name, "Room name" %>
+          <%= f.text_field :name, required: true, placeholder: "Design, Dev, Random…" %>
+        </div>
+        <%= f.submit "Create room", class: "btn btn-glow btn-block" %>
+      <% end %>
+    </section>
+  </div>
+</main>

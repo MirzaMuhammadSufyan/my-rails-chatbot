@@ -1,16 +1,23 @@
-<h1>Join chat</h1>
-<p class="page-sub">Pick a display name to continue.</p>
-
-<div class="card">
-  <% if flash[:alert] %>
-    <p class="alert"><%= flash[:alert] %></p>
-  <% end %>
-
-  <%= form_with url: session_path, method: :post, local: true do %>
-    <div class="field">
-      <label for="user_name">Your name</label>
-      <input type="text" name="user_name" id="user_name" required maxlength="50" autocomplete="nickname" placeholder="e.g. Alex">
+<main class="auth">
+  <section class="auth-card">
+    <div class="auth-brand">
+      <span class="auth-logo">C</span>
+      <h1>Chatbot</h1>
+      <p>Real-time rooms for your team and friends.</p>
     </div>
-    <button type="submit" class="btn">Enter chat</button>
-  <% end %>
-</div>
+
+    <div class="auth-form-wrap">
+      <% if flash[:alert] %>
+        <p class="alert"><%= flash[:alert] %></p>
+      <% end %>
+
+      <%= form_with url: session_path, method: :post, local: true, class: "auth-form" do %>
+        <div class="field">
+          <label for="user_name">Display name</label>
+          <input type="text" name="user_name" id="user_name" required maxlength="50" autocomplete="nickname" placeholder="What should we call you?">
+        </div>
+        <button type="submit" class="btn btn-glow btn-block">Continue</button>
+      <% end %>
+    </div>
+  </section>
+</main>

@@ -1,6 +1,7 @@
 class RoomsController < ApplicationController
   before_action :require_user_name
   before_action :set_room, only: :show
+  before_action :set_room_for_destroy, only: :destroy
 
   def index
     @rooms = Room.order(:name)
@@ -20,6 +21,16 @@ class RoomsController < ApplicationController
     end
   end
 
+  def destroy
+    if @room.general?
+      redirect_to rooms_path, alert: "The General room cannot be deleted."
+      return
+    end
+
+    @room.destroy!
+    redirect_to rooms_path, notice: "Room deleted."
+  end
+
   private
 
   def set_room
@@ -28,6 +39,10 @@ class RoomsController < ApplicationController
             else
               Room.find(params[:id])
             end
+  end
+
+  def set_room_for_destroy
+    @room = Room.find(params[:id])
   end
 
   def room_params
