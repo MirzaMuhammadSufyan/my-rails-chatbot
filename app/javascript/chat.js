@@ -1,6 +1,6 @@
 import { createConsumer } from "@rails/actioncable"
 import { initMediaViewer, enhanceMessageElement, stripMessageMedia } from "media_viewer"
-import { EMOJIS, applyEmojiShortcutsToText } from "emojis"
+import { EMOJIS, applyEmojiShortcutsToText, getEmojiShortcutMatches } from "emojis"
 
 const WAVE_BARS = 28
 
@@ -43,7 +43,8 @@ export function initChat(roomId) {
   initMediaViewer(messagesEl)
   initEmojiPicker()
   initEmojiShortcuts(textarea)
-  initReplyHandlers(messagesEl, form)
+  initReplyHandlers(messagesEl)
+  clearReply()
   initMediaInputs(form, pendingPreview)
   initGlobalComposeKeys(form, pendingPreview)
   initMessagePolling(roomId, messagesEl)
@@ -268,49 +269,226 @@ function initAutoGrow(textarea) {
   resize()
 }
 
+function getPartialShortcut(text) {
+  const colon = text.match(/:([a-z0-9_+-]*)$/i)
+  if (colon) return { type: "colon", query: colon[1], start: colon.index, length: colon[0].length }
+
+  const lt = text.match(/<([0-9$\/]*)$/i)
+  if (lt) return { type: "lt", query: lt[0], start: lt.index, length: lt[0].length }
+
+  return null
+}
+
+function applyHintSelection(textarea, emoji, shortcut) {
+  const partial = getPartialShortcut(textarea.value)
+  if (!partial) return
+
+  const before = textarea.value.slice(0, partial.start)
+  const after = textarea.value.slice(partial.start + partial.length)
+  textarea.value = before + emoji + after
+  const pos = before.length + emoji.length
+  textarea.selectionStart = pos
+  textarea.selectionEnd = pos
+  textarea.dispatchEvent(new Event("input", { bubbles: true }))
+}
+
 function initEmojiShortcuts(textarea) {
   if (!textarea) return
 
-  const run = () => {
+  let hintsEl = document.getElementById("emoji-hints")
+  if (!hintsEl) {
+    hintsEl = document.createElement("div")
+    hintsEl.id = "emoji-hints"
+    hintsEl.className = "emoji-hints"
+    hintsEl.hidden = true
+    const composer = document.getElementById("chat-composer")
+    if (composer?.parentElement) composer.parentElement.insertBefore(hintsEl, composer)
+  }
+
+  let hintIndex = 0
+
+  const hintButtons = () => [...hintsEl.querySelectorAll(".emoji-hint-btn")]
+
+  const updateHintFocus = () => {
+    hintButtons().forEach((btn, i) => {
+      btn.classList.toggle("emoji-hint-btn--active", i === hintIndex)
+    })
+    hintButtons()[hintIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" })
+  }
+
+  const hideHints = () => {
+    hintsEl.hidden = true
+    hintsEl.innerHTML = ""
+    hintIndex = 0
+  }
+
+  const selectHintAt = (index) => {
+    const btn = hintButtons()[index]
+    if (!btn) return
+    applyHintSelection(textarea, btn.dataset.emoji, btn.dataset.shortcut)
+    hideHints()
+  }
+
+  const showHints = () => {
+    const partial = getPartialShortcut(textarea.value)
+    if (!partial) {
+      hideHints()
+      return
+    }
+
+    const matches = getEmojiShortcutMatches(partial.query, partial.type)
+    if (!matches.length) {
+      hideHints()
+      return
+    }
+
+    hintsEl.innerHTML = matches
+      .map(
+        ({ shortcut, emoji }, i) =>
+          `<button type="button" class="emoji-hint-btn${i === 0 ? " emoji-hint-btn--active" : ""}" data-shortcut="${shortcut.replace(/"/g, "&quot;")}" data-emoji="${emoji}">` +
+          `<span class="emoji-hint-emoji">${emoji}</span>` +
+          `<span class="emoji-hint-label">${shortcut}</span></button>`
+      )
+      .join("")
+    hintIndex = 0
+    hintsEl.hidden = false
+  }
+
+  hintsEl.addEventListener("mousedown", (event) => {
+    const btn = event.target.closest(".emoji-hint-btn")
+    if (!btn) return
+    event.preventDefault()
+    const index = hintButtons().indexOf(btn)
+    selectHintAt(index >= 0 ? index : 0)
+  })
+
+  textarea.addEventListener("input", showHints)
+
+  textarea.addEventListener("keydown", (event) => {
+    if (hintsEl.hidden) return
+    const buttons = hintButtons()
+    if (!buttons.length) return
+
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      event.preventDefault()
+      hintIndex = Math.min(hintIndex + 1, buttons.length - 1)
+      updateHintFocus()
+      return
+    }
+
+    if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      event.preventDefault()
+      hintIndex = Math.max(hintIndex - 1, 0)
+      updateHintFocus()
+      return
+    }
+
+    if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+      event.preventDefault()
+      selectHintAt(hintIndex)
+      return
+    }
+
+    if (event.key === "Escape") hideHints()
+  })
+
+  textarea.addEventListener("blur", () => {
+    setTimeout(hideHints, 180)
     const before = textarea.value
     const after = applyEmojiShortcutsToText(before)
     if (after !== before) {
       textarea.value = after
       textarea.dispatchEvent(new Event("input", { bubbles: true }))
     }
-  }
-
-  textarea.addEventListener("input", run)
-  textarea.addEventListener("blur", run)
+  })
 }
 
-function initReplyHandlers(messagesEl, form) {
+const REPLY_INTERACTIVE_SELECTOR =
+  ".msg-delete, .msg-media-trigger, .msg-voice-play, .msg-voice-scrub, .msg-file-card, a[href], input, textarea, select"
+
+function openReplyFromArticle(article) {
   const replyBar = document.getElementById("reply-bar")
   const replyInput = document.getElementById("message_reply_to_id")
   const replyAuthor = document.getElementById("reply-bar-author")
   const replyPreview = document.getElementById("reply-bar-preview")
 
+  const id = article.dataset.replyId || article.querySelector(".msg-reply")?.dataset.replyId || ""
+  if (!id) return
+
+  const author =
+    article.dataset.replyAuthor || article.querySelector(".msg-reply")?.dataset.replyAuthor || ""
+  const preview =
+    article.dataset.replyPreview || article.querySelector(".msg-reply")?.dataset.replyPreview || ""
+
+  if (replyInput) replyInput.value = id
+  if (replyAuthor) replyAuthor.textContent = author
+  if (replyPreview) replyPreview.textContent = preview
+  if (replyBar) {
+    replyBar.hidden = false
+    replyBar.removeAttribute("hidden")
+  }
+
+  document.getElementById("message_body")?.focus()
+}
+
+function initReplyHandlers(messagesEl) {
   document.getElementById("reply-bar-cancel")?.addEventListener("click", () => clearReply())
 
   messagesEl.addEventListener("click", (event) => {
     const btn = event.target.closest(".msg-reply")
     if (!btn) return
     event.preventDefault()
-
-    if (replyInput) replyInput.value = btn.dataset.replyId || ""
-    if (replyAuthor) replyAuthor.textContent = btn.dataset.replyAuthor || ""
-    if (replyPreview) replyPreview.textContent = btn.dataset.replyPreview || ""
-    if (replyBar) replyBar.hidden = false
-
-    document.getElementById("message_body")?.focus()
+    const article = btn.closest(".msg")
+    if (article) openReplyFromArticle(article)
   })
+
+  messagesEl.addEventListener("dblclick", (event) => {
+    if (event.target.closest(REPLY_INTERACTIVE_SELECTOR)) return
+    const article = event.target.closest(".msg")
+    if (!article) return
+    event.preventDefault()
+    openReplyFromArticle(article)
+  })
+
+  let lastTapAt = 0
+  let lastTapArticle = null
+
+  messagesEl.addEventListener(
+    "touchend",
+    (event) => {
+      if (event.target.closest(REPLY_INTERACTIVE_SELECTOR)) return
+      const article = event.target.closest(".msg")
+      if (!article) return
+
+      const now = Date.now()
+      if (article === lastTapArticle && now - lastTapAt < 360) {
+        event.preventDefault()
+        openReplyFromArticle(article)
+        lastTapAt = 0
+        lastTapArticle = null
+        return
+      }
+
+      lastTapAt = now
+      lastTapArticle = article
+    },
+    { passive: false }
+  )
 }
 
 function clearReply() {
   const replyBar = document.getElementById("reply-bar")
   const replyInput = document.getElementById("message_reply_to_id")
+  const replyAuthor = document.getElementById("reply-bar-author")
+  const replyPreview = document.getElementById("reply-bar-preview")
+
   if (replyInput) replyInput.value = ""
-  if (replyBar) replyBar.hidden = true
+  if (replyAuthor) replyAuthor.textContent = ""
+  if (replyPreview) replyPreview.textContent = ""
+  if (replyBar) {
+    replyBar.hidden = true
+    replyBar.setAttribute("hidden", "")
+  }
 }
 
 function initEmojiPicker() {
@@ -599,6 +777,7 @@ function stopPreviewAudio() {
 
 async function sendMessage(form, voiceBlobParam, messagesEl) {
   const body = document.getElementById("message_body")?.value?.trim() ?? ""
+  const processedBody = body ? applyEmojiShortcutsToText(body) : ""
   const fileInput = pickFirstFileInput()
   const hasFile = fileInput?.files?.[0]
   const hasVoice = Boolean(voiceBlobParam)
@@ -620,7 +799,6 @@ async function sendMessage(form, voiceBlobParam, messagesEl) {
   }
 
   const formData = new FormData()
-  const processedBody = body ? applyEmojiShortcutsToText(body) : ""
   if (processedBody) formData.append("message[body]", processedBody)
 
   const replyId = document.getElementById("message_reply_to_id")?.value
@@ -709,45 +887,52 @@ function applyOwnMessageStyle(article, messagesEl) {
 }
 
 function ensureDeleteButton(article, messagesEl) {
+  if (!article.classList.contains("msg--own")) return
+
   const roomId = messagesEl.dataset.roomId
   const messageId = article.dataset.messageId
   if (!roomId || !messageId) return
+  if (article.querySelector(".msg-side-tools .msg-delete")) return
 
   const deleteUrl = `/rooms/${roomId}/messages/${messageId}`
-  const visualWrap = article.querySelector(".msg-visual-wrap")
+  let tools = article.querySelector(".msg-side-tools")
 
-  if (visualWrap && !article.querySelector(".msg-delete--on-media")) {
-    visualWrap.appendChild(buildDeleteButton(deleteUrl, true))
-  }
-
-  const needsFooterDelete = !article.querySelector(".msg-footer .msg-delete") &&
-    (!visualWrap || article.querySelector(".msg-bubble--audio, .msg-bubble--file"))
-
-  if (!needsFooterDelete) return
-
-  let footer = article.querySelector(".msg-footer")
-  if (!footer) {
-    footer = document.createElement("div")
-    footer.className = "msg-footer"
+  if (!tools) {
+    tools = document.createElement("div")
+    tools.className = "msg-side-tools"
     const time = article.querySelector(".msg-time")
+    const reply = article.querySelector(".msg-reply")
+    const line = article.querySelector(".msg-line")
+    const bubbleGroup = article.querySelector(".msg-bubble-group")
+
+    if (reply) tools.appendChild(reply)
+    tools.appendChild(buildDeleteButton(deleteUrl))
     if (time) {
       time.remove()
-      footer.appendChild(time)
+      tools.appendChild(time)
     }
-    article.querySelector(".msg-stack")?.appendChild(footer)
+    line?.insertBefore(tools, bubbleGroup)
+    return
   }
 
-  footer.appendChild(buildDeleteButton(deleteUrl, false))
+  const time = tools.querySelector(".msg-time")
+  const reply = tools.querySelector(".msg-reply")
+  if (reply && time) {
+    tools.insertBefore(buildDeleteButton(deleteUrl), time)
+  } else {
+    tools.appendChild(buildDeleteButton(deleteUrl))
+  }
 }
 
-function buildDeleteButton(deleteUrl, onMedia) {
+function buildDeleteButton(deleteUrl) {
   const btn = document.createElement("button")
   btn.type = "button"
-  btn.className = onMedia ? "msg-delete msg-delete--on-media" : "msg-delete"
+  btn.className = "msg-delete"
   btn.dataset.deleteUrl = deleteUrl
   btn.setAttribute("aria-label", "Delete message")
   btn.title = "Delete"
-  btn.innerHTML = `<svg width="${onMedia ? 16 : 18}" height="${onMedia ? 16 : 18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>${onMedia ? "" : '<span class="msg-delete-label">Delete</span>'}`
+  btn.innerHTML =
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>'
   return btn
 }
 
@@ -784,6 +969,8 @@ function startWaveAnimation() {
   const data = new Uint8Array(analyser.frequencyBinCount)
 
   const tick = () => {
+    if (!analyser) return
+
     analyser.getByteFrequencyData(data)
     const step = Math.floor(data.length / bars.length)
 
@@ -884,6 +1071,9 @@ function stopRecording(recordingUi, draftUi, composer, onComplete) {
 }
 
 function cancelRecording(recordingUi, draftUi, composer) {
+  stopTimer()
+  stopWaveAnimation()
+
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
     mediaRecorder.addEventListener("stop", () => cleanupMic(), { once: true })
     mediaRecorder.stop()
@@ -894,8 +1084,6 @@ function cancelRecording(recordingUi, draftUi, composer) {
   mediaRecorder = null
   recordedChunks = []
   voiceBlob = null
-  stopTimer()
-  stopWaveAnimation()
   hideRecordingUi(recordingUi, composer)
   hideVoiceDraft(draftUi, composer)
 }
