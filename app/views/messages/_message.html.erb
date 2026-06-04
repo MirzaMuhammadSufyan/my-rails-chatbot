@@ -8,32 +8,33 @@
 
 <article id="<%= dom_id(message) %>" class="msg<%= " msg--own" if own %><%= " msg--has-media" if message.media.attached? %><%= " msg--visual" if visual %>" data-message-id="<%= message.id %>" data-author="<%= message.user_name %>" data-reply-id="<%= message.id %>" data-reply-author="<%= message.user_name %>" data-reply-preview="<%= h(message.snippet) %>">
   <div class="msg-body">
-    <% unless own %>
-      <span class="msg-avatar" style="--avatar-hue: <%= hue %>" aria-hidden="true"><%= initial %></span>
-    <% end %>
-
     <div class="msg-stack">
       <% unless own %>
-        <span class="msg-name"><%= message.user_name %></span>
+        <div class="msg-header">
+          <span class="msg-avatar" style="--avatar-hue: <%= hue %>" aria-hidden="true" title="<%= message.user_name %>"><%= initial %></span>
+          <span class="msg-name"><%= message.user_name %></span>
+        </div>
       <% end %>
 
       <div class="msg-line">
         <% if own %>
-          <div class="msg-side-tools">
-            <button type="button" class="msg-reply"
-              data-reply-id="<%= message.id %>"
-              data-reply-author="<%= message.user_name %>"
-              data-reply-preview="<%= h(message.snippet) %>"
-              aria-label="Reply"
-              title="Reply">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="9 14 4 9 9 4"/>
-                <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-              </svg>
-            </button>
-            <button type="button" class="msg-delete" data-delete-url="<%= room_message_path(message.room, message) %>" aria-label="Delete message" title="Delete">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-            </button>
+          <div class="msg-side-tools<%= " msg-side-tools--visual" if visual %>">
+            <div class="msg-side-actions">
+              <button type="button" class="msg-reply"
+                data-reply-id="<%= message.id %>"
+                data-reply-author="<%= message.user_name %>"
+                data-reply-preview="<%= h(message.snippet) %>"
+                aria-label="Reply"
+                title="Reply">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="9 14 4 9 9 4"/>
+                  <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+                </svg>
+              </button>
+              <button type="button" class="msg-delete" data-delete-url="<%= room_message_path(message.room, message) %>" aria-label="Delete message" title="Delete">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+              </button>
+            </div>
             <time class="msg-time" datetime="<%= message.created_at.iso8601 %>"><%= message.created_at.strftime("%H:%M") %></time>
           </div>
         <% end %>
@@ -117,19 +118,21 @@
         </div>
 
         <% unless own %>
-          <div class="msg-side-tools">
+          <div class="msg-side-tools<%= " msg-side-tools--visual" if visual %>">
+            <div class="msg-side-actions">
+              <button type="button" class="msg-reply"
+                data-reply-id="<%= message.id %>"
+                data-reply-author="<%= message.user_name %>"
+                data-reply-preview="<%= h(message.snippet) %>"
+                aria-label="Reply to <%= message.user_name %>"
+                title="Reply">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="9 14 4 9 9 4"/>
+                  <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+                </svg>
+              </button>
+            </div>
             <time class="msg-time" datetime="<%= message.created_at.iso8601 %>"><%= message.created_at.strftime("%H:%M") %></time>
-            <button type="button" class="msg-reply"
-              data-reply-id="<%= message.id %>"
-              data-reply-author="<%= message.user_name %>"
-              data-reply-preview="<%= h(message.snippet) %>"
-              aria-label="Reply to <%= message.user_name %>"
-              title="Reply">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="9 14 4 9 9 4"/>
-                <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-              </svg>
-            </button>
           </div>
         <% end %>
       </div>

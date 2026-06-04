@@ -12,16 +12,18 @@
       <span class="chat-topbar-live" aria-label="Connected">Online</span>
     </header>
 
-    <div id="messages" class="chat-feed" data-chat-room data-room-id="<%= @room.id %>" data-current-user="<%= current_user_name %>">
-      <% if @messages.empty? %>
-        <div class="chat-empty" aria-hidden="false">
-          <div class="chat-empty-icon" aria-hidden="true">💬</div>
-          <p class="chat-empty-title">No messages yet</p>
-          <p class="chat-empty-text">Say hello — everyone in this room will see it instantly.</p>
-        </div>
-      <% else %>
-        <%= render @messages %>
-      <% end %>
+    <div class="chat-feed-wrap">
+      <div id="messages" class="chat-feed" data-chat-room data-room-id="<%= @room.id %>" data-current-user="<%= current_user_name %>">
+        <% if @messages.empty? %>
+          <div class="chat-empty" aria-hidden="false">
+            <div class="chat-empty-icon" aria-hidden="true">💬</div>
+            <p class="chat-empty-title">No messages yet</p>
+            <p class="chat-empty-text">Say hello — everyone in this room will see it instantly.</p>
+          </div>
+        <% else %>
+          <%= render @messages %>
+        <% end %>
+      </div>
     </div>
 
     <footer class="chat-dock">

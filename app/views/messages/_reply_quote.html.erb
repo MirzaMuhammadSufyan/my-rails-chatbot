@@ -1,4 +1,4 @@
-<div class="msg-reply-quote">
+<button type="button" class="msg-reply-quote" data-reply-target-id="<%= message.reply_to_id %>" aria-label="Jump to message from <%= message.reply_to.user_name %>">
   <span class="msg-reply-quote-author"><%= message.reply_to.user_name %></span>
   <span class="msg-reply-quote-text"><%= h(message.reply_preview) %></span>
-</div>
+</button>

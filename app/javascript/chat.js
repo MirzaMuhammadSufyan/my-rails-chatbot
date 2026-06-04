@@ -17,6 +17,9 @@ let lastRecordingDuration = 0
 let previewAudio = null
 let pendingPreviewUrl = null
 let isSending = false
+let unreadBelowCount = 0
+let jumpBottomBtn = null
+let jumpBottomBadge = null
 const MIN_VOICE_BYTES = 500
 const MIN_RECORDING_SEC = 0.8
 
@@ -40,10 +43,13 @@ export function initChat(roomId) {
   buildWaveformBars(document.getElementById("voice-draft-wave"), true)
 
   initScrollToEnd(messagesEl)
+  initNewMessagesIndicator(messagesEl)
   initMediaViewer(messagesEl)
   initEmojiPicker()
   initEmojiShortcuts(textarea)
   initReplyHandlers(messagesEl)
+  initReplyQuoteScroll(messagesEl)
+  messagesEl.querySelectorAll("article.msg").forEach((article) => applyOwnMessageStyle(article, messagesEl))
   clearReply()
   initMediaInputs(form, pendingPreview)
   initGlobalComposeKeys(form, pendingPreview)
@@ -186,6 +192,75 @@ function isNearBottom(el, threshold = 100) {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold
 }
 
+function ensureChatFeedWrap(messagesEl) {
+  const parent = messagesEl.parentElement
+  if (parent?.classList.contains("chat-feed-wrap")) return parent
+
+  const wrap = document.createElement("div")
+  wrap.className = "chat-feed-wrap"
+  parent?.insertBefore(wrap, messagesEl)
+  wrap.appendChild(messagesEl)
+  return wrap
+}
+
+function updateJumpBottomButton() {
+  if (!jumpBottomBtn || !jumpBottomBadge) return
+
+  if (unreadBelowCount <= 0) {
+    jumpBottomBtn.hidden = true
+    jumpBottomBadge.hidden = true
+    jumpBottomBadge.textContent = ""
+    return
+  }
+
+  jumpBottomBtn.hidden = false
+  jumpBottomBadge.hidden = false
+  jumpBottomBadge.textContent = unreadBelowCount > 99 ? "99+" : String(unreadBelowCount)
+}
+
+function bumpUnreadBelow(count = 1) {
+  unreadBelowCount += count
+  updateJumpBottomButton()
+}
+
+function clearUnreadBelow() {
+  unreadBelowCount = 0
+  updateJumpBottomButton()
+}
+
+function initNewMessagesIndicator(messagesEl) {
+  const wrap = ensureChatFeedWrap(messagesEl)
+
+  jumpBottomBtn = document.getElementById("chat-jump-bottom")
+  if (!jumpBottomBtn) {
+    jumpBottomBtn = document.createElement("button")
+    jumpBottomBtn.type = "button"
+    jumpBottomBtn.id = "chat-jump-bottom"
+    jumpBottomBtn.className = "chat-jump-bottom"
+    jumpBottomBtn.hidden = true
+    jumpBottomBtn.setAttribute("aria-label", "Jump to latest messages")
+    jumpBottomBtn.innerHTML =
+      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M7 13l5 5 5-5"/></svg>' +
+      '<span class="chat-jump-badge" hidden></span>'
+    wrap.appendChild(jumpBottomBtn)
+  }
+
+  jumpBottomBadge = jumpBottomBtn.querySelector(".chat-jump-badge")
+
+  jumpBottomBtn.addEventListener("click", () => {
+    clearUnreadBelow()
+    scrollToBottom(messagesEl, true)
+  })
+
+  messagesEl.addEventListener(
+    "scroll",
+    () => {
+      if (isNearBottom(messagesEl)) clearUnreadBelow()
+    },
+    { passive: true }
+  )
+}
+
 function initScrollToEnd(messagesEl) {
   const scroll = () => scrollToBottom(messagesEl, true)
 
@@ -240,6 +315,8 @@ function appendMessageHtml(messagesEl, html, options = {}) {
     return
   }
 
+  const nearBeforeAppend = isNearBottom(messagesEl)
+
   applyOwnMessageStyle(article, messagesEl)
   enhanceMessageElement(article)
 
@@ -247,17 +324,27 @@ function appendMessageHtml(messagesEl, html, options = {}) {
     messagesEl.appendChild(temp.firstChild)
   }
 
-  const shouldScroll = options.scroll !== false && (options.forceScroll || isNearBottom(messagesEl))
+  const shouldScroll =
+    options.scroll !== false && (options.forceScroll || nearBeforeAppend || isNearBottom(messagesEl))
 
   temp.querySelectorAll("img").forEach((img) => {
     if (!img.complete && shouldScroll) {
-      img.addEventListener("load", () => {
-        if (isNearBottom(messagesEl)) scrollToBottom(messagesEl)
-      }, { once: true })
+      img.addEventListener(
+        "load",
+        () => {
+          if (isNearBottom(messagesEl)) scrollToBottom(messagesEl)
+        },
+        { once: true }
+      )
     }
   })
 
-  if (shouldScroll) scrollToBottom(messagesEl)
+  if (shouldScroll) {
+    scrollToBottom(messagesEl, Boolean(options.forceScroll))
+    if (options.forceScroll || isNearBottom(messagesEl)) clearUnreadBelow()
+  } else {
+    bumpUnreadBelow(1)
+  }
 }
 
 function initAutoGrow(textarea) {
@@ -404,7 +491,7 @@ function initEmojiShortcuts(textarea) {
 }
 
 const REPLY_INTERACTIVE_SELECTOR =
-  ".msg-delete, .msg-media-trigger, .msg-voice-play, .msg-voice-scrub, .msg-file-card, a[href], input, textarea, select"
+  ".msg-delete, .msg-media-trigger, .msg-voice-play, .msg-voice-scrub, .msg-file-card, .msg-reply-quote, a[href], input, textarea, select"
 
 function openReplyFromArticle(article) {
   const replyBar = document.getElementById("reply-bar")
@@ -429,6 +516,28 @@ function openReplyFromArticle(article) {
   }
 
   document.getElementById("message_body")?.focus()
+}
+
+function scrollToReferencedMessage(messagesEl, messageId) {
+  const target = document.getElementById(`message_${messageId}`)
+  if (!target) return false
+
+  target.scrollIntoView({ behavior: "smooth", block: "center" })
+  target.classList.remove("msg--highlight")
+  void target.offsetWidth
+  target.classList.add("msg--highlight")
+  setTimeout(() => target.classList.remove("msg--highlight"), 1400)
+  return true
+}
+
+function initReplyQuoteScroll(messagesEl) {
+  messagesEl.addEventListener("click", (event) => {
+    const quote = event.target.closest(".msg-reply-quote[data-reply-target-id]")
+    if (!quote) return
+    event.preventDefault()
+    event.stopPropagation()
+    scrollToReferencedMessage(messagesEl, quote.dataset.replyTargetId)
+  })
 }
 
 function initReplyHandlers(messagesEl) {
@@ -860,6 +969,7 @@ function scrollToBottom(el, force = false) {
   if (!el) return
   if (!force && !isNearBottom(el)) return
   el.scrollTop = el.scrollHeight
+  if (force || isNearBottom(el)) clearUnreadBelow()
 }
 
 function removeMessagePreserveScroll(messagesEl, article) {
@@ -881,8 +991,55 @@ function applyOwnMessageStyle(article, messagesEl) {
   if (!currentUser || article.dataset.author !== currentUser) return
 
   article.classList.add("msg--own")
+  article.querySelector(".msg-header")?.remove()
   article.querySelector(".msg-name")?.remove()
   article.querySelector(".msg-avatar")?.remove()
+  normalizeOwnMessageLayout(article, messagesEl)
+}
+
+function normalizeOwnMessageLayout(article, messagesEl) {
+  const line = article.querySelector(".msg-line")
+  const bubbleGroup = article.querySelector(".msg-bubble-group")
+  if (!line || !bubbleGroup) return
+
+  const visual = article.classList.contains("msg--visual")
+  let tools = article.querySelector(".msg-side-tools")
+  const replyBtn = article.querySelector(".msg-reply")
+  let timeEl = article.querySelector(".msg-time")
+
+  if (!tools) {
+    tools = document.createElement("div")
+    tools.className = `msg-side-tools${visual ? " msg-side-tools--visual" : ""}`
+    line.insertBefore(tools, bubbleGroup)
+  } else if (
+    tools.compareDocumentPosition(bubbleGroup) & Node.DOCUMENT_POSITION_PRECEDING
+  ) {
+    line.insertBefore(tools, bubbleGroup)
+  }
+
+  tools.classList.toggle("msg-side-tools--visual", visual)
+
+  let actions = tools.querySelector(".msg-side-actions")
+  if (!actions) {
+    actions = document.createElement("div")
+    actions.className = "msg-side-actions"
+    tools.prepend(actions)
+  }
+
+  if (replyBtn && replyBtn.parentElement !== actions) {
+    actions.appendChild(replyBtn)
+  }
+
+  if (timeEl) {
+    if (timeEl.parentElement !== tools) {
+      timeEl.remove()
+      tools.appendChild(timeEl)
+    } else if (actions.contains(timeEl)) {
+      actions.removeChild(timeEl)
+      tools.appendChild(timeEl)
+    }
+  }
+
   ensureDeleteButton(article, messagesEl)
 }
 
@@ -895,32 +1052,21 @@ function ensureDeleteButton(article, messagesEl) {
   if (article.querySelector(".msg-side-tools .msg-delete")) return
 
   const deleteUrl = `/rooms/${roomId}/messages/${messageId}`
-  let tools = article.querySelector(".msg-side-tools")
+  const tools = article.querySelector(".msg-side-tools")
+  if (!tools) return
 
-  if (!tools) {
-    tools = document.createElement("div")
-    tools.className = "msg-side-tools"
-    const time = article.querySelector(".msg-time")
-    const reply = article.querySelector(".msg-reply")
-    const line = article.querySelector(".msg-line")
-    const bubbleGroup = article.querySelector(".msg-bubble-group")
-
-    if (reply) tools.appendChild(reply)
-    tools.appendChild(buildDeleteButton(deleteUrl))
-    if (time) {
-      time.remove()
-      tools.appendChild(time)
-    }
-    line?.insertBefore(tools, bubbleGroup)
-    return
+  let actions = tools.querySelector(".msg-side-actions")
+  if (!actions) {
+    actions = document.createElement("div")
+    actions.className = "msg-side-actions"
+    tools.prepend(actions)
   }
 
-  const time = tools.querySelector(".msg-time")
-  const reply = tools.querySelector(".msg-reply")
-  if (reply && time) {
-    tools.insertBefore(buildDeleteButton(deleteUrl), time)
+  const reply = actions.querySelector(".msg-reply")
+  if (reply) {
+    reply.after(buildDeleteButton(deleteUrl))
   } else {
-    tools.appendChild(buildDeleteButton(deleteUrl))
+    actions.appendChild(buildDeleteButton(deleteUrl))
   }
 }
 
