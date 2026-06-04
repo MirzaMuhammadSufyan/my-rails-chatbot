@@ -53,7 +53,18 @@ Paste the output as `SECRET_KEY_BASE` on Render (skip `RAILS_MASTER_KEY` if you 
 
 Redeploy after saving env vars.
 
-### 4. Media uploads (S3)
+### 4. PostgreSQL (`DATABASE_URL`)
+
+Without this, deploy fails with `connection to server on socket ... PGSQL.5432 failed`.
+
+1. Render Dashboard → **New +** → **PostgreSQL** (same region as the web service, e.g. Oregon)
+2. After the DB is created, open **my-rails-chatbot** (web service) → **Environment**
+3. **Add Environment Variable** → **Add from database** → select your Postgres → property **Internal Database URL**
+4. Key must be exactly `DATABASE_URL` → **Save**
+
+Or copy **Internal Database URL** from the database’s **Connect** tab and paste it as `DATABASE_URL` on the web service.
+
+### 5. Media uploads (S3)
 
 Render’s filesystem is ephemeral. For image/video/audio messages, add these environment variables on the **chatbot** web service:
 
@@ -66,7 +77,7 @@ Render’s filesystem is ephemeral. For image/video/audio messages, add these en
 
 Text-only chat works without S3; attachments require it.
 
-### 5. Manual deploy (without Blueprint)
+### 6. Manual deploy (without Blueprint)
 
 Create a **PostgreSQL** database and a **Docker Web Service** in the same region. Render auto-detects the `Dockerfile`.
 
@@ -78,7 +89,7 @@ Create a **PostgreSQL** database and a **Docker Web Service** in the same region
 | `SOLID_QUEUE_IN_PUMA` | `1` |
 | `WEB_CONCURRENCY` | `2` |
 
-### 6. Open the app
+### 7. Open the app
 
 After the first deploy succeeds, open your `*.onrender.com` URL. Health check: `/up`.
 

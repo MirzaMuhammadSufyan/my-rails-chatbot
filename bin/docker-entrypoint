@@ -11,6 +11,11 @@ if [ -z "${RAILS_MASTER_KEY:-}" ] && [ -z "${SECRET_KEY_BASE:-}" ]; then
   exit 1
 fi
 
+if [ "${RAILS_ENV:-}" = "production" ] && [ -z "${DATABASE_URL:-}" ]; then
+  echo "ERROR: DATABASE_URL is not set. Create a Render PostgreSQL database and link it to this web service." >&2
+  exit 1
+fi
+
 # Migrate when starting the web server (Docker / Render).
 if [[ "$*" == *"puma"* ]] || [[ "${@: -1:1}" == "server" ]]; then
   ./bin/rails db:prepare
