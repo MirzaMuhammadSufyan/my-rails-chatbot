@@ -5,7 +5,7 @@
 <% audio_msg = message.media.attached? && message.content_type == "audio" %>
 <% media_url = message.media_proxy_path if message.media.attached? %>
 
-<article id="<%= dom_id(message) %>" class="msg<%= " msg--own" if own %>" data-message-id="<%= message.id %>" data-author="<%= message.user_name %>">
+<article id="<%= dom_id(message) %>" class="msg<%= " msg--own" if own %><%= " msg--has-media" if message.media.attached? %>" data-message-id="<%= message.id %>" data-author="<%= message.user_name %>">
   <% unless own %>
     <span class="msg-avatar" style="--avatar-hue: <%= hue %>" aria-hidden="true"><%= initial %></span>
   <% end %>
@@ -18,21 +18,35 @@
     <% if message.media.attached? %>
       <% case message.content_type %>
       <% when "image" %>
-        <div class="msg-bubble msg-bubble--visual">
-          <button type="button" class="msg-media-trigger" data-media-type="image" data-media-src="<%= media_url %>" aria-label="Open image full screen">
-            <%= image_tag media_url, alt: "Image", class: "msg-image", loading: "lazy" %>
-          </button>
+        <div class="msg-visual-wrap">
+          <div class="msg-bubble msg-bubble--visual">
+            <button type="button" class="msg-media-trigger" data-media-type="image" data-media-src="<%= media_url %>" aria-label="Open image full screen">
+              <%= image_tag media_url, alt: "Image", class: "msg-image", loading: "lazy" %>
+            </button>
+          </div>
+          <% if own %>
+            <button type="button" class="msg-delete msg-delete--on-media" data-delete-url="<%= room_message_path(message.room, message) %>" aria-label="Delete message" title="Delete">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+            </button>
+          <% end %>
         </div>
       <% when "video" %>
-        <div class="msg-bubble msg-bubble--visual">
-          <button type="button" class="msg-media-trigger" data-media-type="video" data-media-src="<%= media_url %>" data-media-mime="<%= message.media.content_type %>" aria-label="Open video full screen">
-            <video class="msg-video" preload="metadata" playsinline muted aria-hidden="true">
-              <source src="<%= media_url %>" type="<%= message.media.content_type %>">
-            </video>
-            <span class="msg-media-play-badge" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 20 12 8 19 8 5"/></svg>
-            </span>
-          </button>
+        <div class="msg-visual-wrap">
+          <div class="msg-bubble msg-bubble--visual">
+            <button type="button" class="msg-media-trigger" data-media-type="video" data-media-src="<%= media_url %>" data-media-mime="<%= message.media.content_type %>" aria-label="Open video full screen">
+              <video class="msg-video" preload="metadata" playsinline muted aria-hidden="true">
+                <source src="<%= media_url %>" type="<%= message.media.content_type %>">
+              </video>
+              <span class="msg-media-play-badge" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="8 5 20 12 8 19 8 5"/></svg>
+              </span>
+            </button>
+          </div>
+          <% if own %>
+            <button type="button" class="msg-delete msg-delete--on-media" data-delete-url="<%= room_message_path(message.room, message) %>" aria-label="Delete message" title="Delete">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+            </button>
+          <% end %>
         </div>
       <% when "audio" %>
         <div class="msg-bubble msg-bubble--audio">
@@ -70,9 +84,10 @@
 
     <div class="msg-footer">
       <time class="msg-time" datetime="<%= message.created_at.iso8601 %>"><%= message.created_at.strftime("%H:%M") %></time>
-      <% if own %>
+      <% if own && !visual %>
         <button type="button" class="msg-delete" data-delete-url="<%= room_message_path(message.room, message) %>" aria-label="Delete message" title="Delete">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+          <span class="msg-delete-label">Delete</span>
         </button>
       <% end %>
     </div>

@@ -149,6 +149,12 @@ function initGlobalComposeKeys(form, pendingPreview) {
     clearFileInputs(form)
   })
 
+  document.getElementById("pending-media-send")?.addEventListener("click", () => {
+    if (pendingPreview?.hidden) return
+    if (!pickFirstFileInput()?.files?.[0]) return
+    form.requestSubmit()
+  })
+
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       const draftUi = document.getElementById("voice-draft-ui")
@@ -645,11 +651,21 @@ function applyOwnMessageStyle(article, messagesEl) {
 }
 
 function ensureDeleteButton(article, messagesEl) {
-  if (article.querySelector(".msg-delete")) return
-
   const roomId = messagesEl.dataset.roomId
   const messageId = article.dataset.messageId
   if (!roomId || !messageId) return
+
+  const deleteUrl = `/rooms/${roomId}/messages/${messageId}`
+  const visualWrap = article.querySelector(".msg-visual-wrap")
+
+  if (visualWrap && !article.querySelector(".msg-delete--on-media")) {
+    visualWrap.appendChild(buildDeleteButton(deleteUrl, true))
+  }
+
+  const needsFooterDelete = !article.querySelector(".msg-footer .msg-delete") &&
+    (!visualWrap || article.querySelector(".msg-bubble--audio, .msg-bubble--file"))
+
+  if (!needsFooterDelete) return
 
   let footer = article.querySelector(".msg-footer")
   if (!footer) {
@@ -663,14 +679,18 @@ function ensureDeleteButton(article, messagesEl) {
     article.querySelector(".msg-stack")?.appendChild(footer)
   }
 
+  footer.appendChild(buildDeleteButton(deleteUrl, false))
+}
+
+function buildDeleteButton(deleteUrl, onMedia) {
   const btn = document.createElement("button")
   btn.type = "button"
-  btn.className = "msg-delete"
-  btn.dataset.deleteUrl = `/rooms/${roomId}/messages/${messageId}`
+  btn.className = onMedia ? "msg-delete msg-delete--on-media" : "msg-delete"
+  btn.dataset.deleteUrl = deleteUrl
   btn.setAttribute("aria-label", "Delete message")
   btn.title = "Delete"
-  btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>`
-  footer.appendChild(btn)
+  btn.innerHTML = `<svg width="${onMedia ? 16 : 18}" height="${onMedia ? 16 : 18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>${onMedia ? "" : '<span class="msg-delete-label">Delete</span>'}`
+  return btn
 }
 
 function formatTime(seconds) {
