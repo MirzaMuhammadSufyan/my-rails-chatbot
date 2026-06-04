@@ -2,8 +2,14 @@ source "https://rubygems.org"
 
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
 gem "rails", "~> 8.0.5"
-# Use sqlite3 as the database for Active Record
-gem "sqlite3", ">= 2.1"
+# Use sqlite3 as the database for Active Record (local development only)
+gem "sqlite3", ">= 2.1", groups: %i[development test]
+
+# PostgreSQL for production (Render and other cloud hosts)
+gem "pg", "~> 1.5"
+
+# Active Storage on S3 when AWS_BUCKET is set (required for media on Render)
+gem "aws-sdk-s3", require: false
 # Use the Puma web server [https://github.com/puma/puma]
 gem "puma", ">= 5.0"
 # Use JavaScript with ESM import maps [https://github.com/rails/importmap-rails]

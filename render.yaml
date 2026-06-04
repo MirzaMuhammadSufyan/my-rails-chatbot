@@ -1,0 +1,31 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy: Dashboard → Blueprints → New Blueprint Instance → select this repo.
+# Set RAILS_MASTER_KEY from config/master.key when prompted.
+
+databases:
+  - name: chatbot-db
+    plan: free
+    databaseName: chatbot
+    user: chatbot
+
+services:
+  - type: web
+    name: chatbot
+    runtime: ruby
+    plan: free
+    buildCommand: "./bin/render-build.sh"
+    # preDeployCommand: "./bin/rails db:prepare"  # paid plans only
+    startCommand: "bundle exec puma -C config/puma.rb"
+    envVars:
+      - key: RAILS_ENV
+        value: production
+      - key: RAILS_MASTER_KEY
+        sync: false
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: SOLID_QUEUE_IN_PUMA
+        value: "1"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: chatbot-db
+          property: connectionString

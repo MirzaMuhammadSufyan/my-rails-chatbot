@@ -21,8 +21,8 @@ Rails.application.configure do
   # Enable serving of images, stylesheets, and JavaScripts from an asset server.
   # config.asset_host = "http://assets.example.com"
 
-  # Store uploaded files on the local file system (see config/storage.yml for options).
-  config.active_storage.service = :local
+  # Render has an ephemeral filesystem — use S3 when AWS_BUCKET is set (required for chat media).
+  config.active_storage.service = ENV["AWS_BUCKET"].present? ? :amazon : :local
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   config.assume_ssl = true
@@ -57,8 +57,15 @@ Rails.application.configure do
   # Set this to true and configure the email server for immediate delivery to raise delivery errors.
   # config.action_mailer.raise_delivery_errors = false
 
-  # Set host to be used by links generated in mailer templates.
-  config.action_mailer.default_url_options = { host: "example.com" }
+  app_host = ENV["APP_HOST"].presence || ENV["RENDER_EXTERNAL_URL"]&.then { |url| URI.parse(url).host }
+
+  if app_host.present?
+    config.hosts << app_host
+    config.action_mailer.default_url_options = { host: app_host, protocol: "https" }
+    cable_origins = ["https://#{app_host}"]
+    cable_origins << ENV["RENDER_EXTERNAL_URL"] if ENV["RENDER_EXTERNAL_URL"].present?
+    config.action_cable.allowed_request_origins = cable_origins.uniq
+  end
 
   # Specify outgoing SMTP server. Remember to add smtp/* credentials via rails credentials:edit.
   # config.action_mailer.smtp_settings = {
@@ -79,12 +86,5 @@ Rails.application.configure do
   # Only use :id for inspections in production.
   config.active_record.attributes_for_inspect = [ :id ]
 
-  # Enable DNS rebinding protection and other `Host` header attacks.
-  # config.hosts = [
-  #   "example.com",     # Allow requests from example.com
-  #   /.*\.example\.com/ # Allow requests from subdomains like `www.example.com`
-  # ]
-  #
-  # Skip DNS rebinding protection for the default health check endpoint.
-  # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 end
