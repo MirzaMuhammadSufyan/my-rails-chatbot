@@ -60,9 +60,59 @@ export function enhanceMessageElement(article) {
   article.querySelectorAll(".msg-voice-player:not([data-voice-ready])").forEach(initVoicePlayer)
 }
 
+export function stripMessageMedia(article) {
+  if (!article) return
+
+  article.querySelectorAll("video, audio").forEach((el) => {
+    try {
+      el.pause()
+    } catch {
+      /* ignore */
+    }
+    el.removeAttribute("src")
+    el.querySelectorAll("source").forEach((source) => {
+      source.removeAttribute("src")
+      source.src = ""
+    })
+    try {
+      el.load()
+    } catch {
+      /* ignore */
+    }
+  })
+
+  article.querySelectorAll("img.msg-image").forEach((img) => {
+    img.removeAttribute("src")
+  })
+}
+
+function removeMessageElement(article) {
+  if (activeVoicePlayer?.closest(".msg") === article) {
+    activeVoicePlayer = null
+  }
+
+  const feed = article.closest("[data-chat-room]")
+  if (feed) {
+    const distanceFromBottom =
+      feed.scrollHeight - feed.scrollTop - feed.clientHeight
+    article.remove()
+    feed.scrollTop = Math.max(
+      0,
+      feed.scrollHeight - feed.clientHeight - distanceFromBottom
+    )
+    return
+  }
+
+  article.remove()
+}
+
 async function deleteMessage(url, article) {
   if (!url || !article) return
+  if (article.dataset.deleting === "true") return
   if (!confirm("Delete this message?")) return
+
+  article.dataset.deleting = "true"
+  stripMessageMedia(article)
 
   const token = document.querySelector('meta[name="csrf-token"]')?.content
 
@@ -76,28 +126,16 @@ async function deleteMessage(url, article) {
       credentials: "same-origin"
     })
 
-    if (response.ok || response.status === 204) {
-      if (activeVoicePlayer?.closest(".msg") === article) {
-        activeVoicePlayer = null
-      }
-      const feed = article.closest("[data-chat-room]")
-      if (feed) {
-        const distanceFromBottom =
-          feed.scrollHeight - feed.scrollTop - feed.clientHeight
-        article.remove()
-        feed.scrollTop = Math.max(
-          0,
-          feed.scrollHeight - feed.clientHeight - distanceFromBottom
-        )
-      } else {
-        article.remove()
-      }
+    if (response.ok || response.status === 204 || response.status === 404) {
+      removeMessageElement(article)
       return
     }
 
+    delete article.dataset.deleting
     alert("Could not delete message.")
   } catch {
-    alert("Network error. Try again.")
+    delete article.dataset.deleting
+    removeMessageElement(article)
   }
 }
 

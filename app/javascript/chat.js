@@ -1,5 +1,5 @@
 import { createConsumer } from "@rails/actioncable"
-import { initMediaViewer, enhanceMessageElement } from "media_viewer"
+import { initMediaViewer, enhanceMessageElement, stripMessageMedia } from "media_viewer"
 
 const EMOJIS = [
   "😀", "😃", "😄", "😁", "😅", "😂", "🤣", "😊",
@@ -76,7 +76,10 @@ export function initChat(roomId) {
       received(data) {
         if (data.delete_message_id) {
           const article = document.getElementById(`message_${data.delete_message_id}`)
-          if (article) removeMessagePreserveScroll(messagesEl, article)
+          if (article) {
+            stripMessageMedia(article)
+            removeMessagePreserveScroll(messagesEl, article)
+          }
           return
         }
         if (!data.html) return

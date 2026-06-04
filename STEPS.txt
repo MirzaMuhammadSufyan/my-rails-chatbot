@@ -1,0 +1,325 @@
+================================================================================
+  CHATBOT — HOW IT WAS BUILT & DEPLOYED (Step-by-step guide)
+  Project: Real-time chat app (Rails 8)
+  Live URL example: https://my-rails-chatbot.onrender.com
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. What this app does
+2. Tech stack (libraries & tools)
+3. Project structure
+4. How the app was built (development steps)
+5. How features work (methods & flow)
+6. How deployment on Render works
+7. Environment variables
+8. Local development
+9. Common issues & fixes
+
+
+================================================================================
+1. WHAT THIS APP DOES
+================================================================================
+
+- User enters a display name (no password) and joins chat rooms
+- "General" room opens by default
+- Users can create extra rooms (Design, Dev, etc.)
+- Real-time text chat — messages appear for other users without refresh
+- Send images, videos, audio files, documents, voice notes
+- Emoji picker, full-screen media preview before send
+- Delete your own messages (text + media)
+- Full-width dark UI on mobile and desktop
+
+
+================================================================================
+2. TECH STACK (TECHNOLOGIES & LIBRARIES)
+================================================================================
+
+BACKEND
+-------
+- Ruby 3.3.8
+- Rails 8.0.5          — web framework (MVC)
+- Puma                 — HTTP server (handles PORT on Render)
+- SQLite3              — local dev/test database only
+- PostgreSQL (pg gem)  — production database on Render
+- Active Record        — ORM (Room, Message models)
+- Active Storage       — file uploads (images, video, audio, docs)
+- Action Cable         — WebSocket real-time layer
+- Solid Cable          — stores cable messages in PostgreSQL (no Redis needed)
+- Solid Cache          — database-backed cache
+- Solid Queue          — background jobs inside Puma
+- aws-sdk-s3           — optional S3 storage for media (production)
+
+FRONTEND
+--------
+- ERB templates        — HTML views (rooms, chat, login)
+- Propshaft            — serves CSS/JS assets
+- Importmap            — JavaScript modules (no Node/webpack required)
+- Vanilla JavaScript   — chat.js, media_viewer.js, application.js
+- @rails/actioncable   — WebSocket client for live updates
+- Custom CSS           — application.css (dark theme, full width)
+
+DEPLOYMENT
+----------
+- Docker               — production container (Dockerfile)
+- Render.com           — cloud host (free tier)
+- Render PostgreSQL    — managed database
+- GitHub               — source code + auto deploy on push
+
+DEV TOOLS
+---------
+- Brakeman, RuboCop    — security & style (dev only)
+- Kamal                — optional Docker deploy (not used for Render)
+
+
+================================================================================
+3. PROJECT STRUCTURE (IMPORTANT FILES)
+================================================================================
+
+app/
+  models/
+    room.rb              — chat rooms (General, custom rooms)
+    message.rb           — messages + media + Action Cable broadcast
+  controllers/
+    sessions_controller.rb   — login (display name → cookie)
+    rooms_controller.rb      — list/create/delete rooms
+    messages_controller.rb   — create/delete messages, polling API
+  channels/
+    chat_channel.rb          — WebSocket subscription per room
+    application_cable/       — cable connection (reads user cookie)
+  views/
+    sessions/new.html.erb    — login page
+    rooms/index.html.erb     — room list
+    rooms/show.html.erb      — chat UI
+    messages/_message.html.erb — single message partial
+  javascript/
+    chat.js              — send, emoji, voice, polling, cable
+    media_viewer.js      — lightbox, voice player, delete
+    application.js       — boots chat on room page
+  assets/stylesheets/
+    application.css      — all UI styles
+
+config/
+  routes.rb              — URLs (/rooms, /messages, /cable)
+  database.yml           — SQLite dev, PostgreSQL production
+  cable.yml              — Solid Cable in production
+  storage.yml            — local disk or S3 for uploads
+  environments/production.rb — SSL, hosts, Action Cable, storage
+
+db/
+  migrate/               — rooms, messages, active_storage tables
+  cable_migrate/         — solid_cable_messages table
+  cache_migrate/         — solid_cache_entries table
+  queue_migrate/         — solid_queue tables
+
+Dockerfile               — builds production image + assets:precompile
+bin/docker-entrypoint    — runs db:migrate on startup
+bin/render-build.sh      — Render native build script (optional)
+render.yaml              — Render Blueprint (DB + web service)
+
+
+================================================================================
+4. HOW THE APP WAS BUILT (DEVELOPMENT STEPS)
+================================================================================
+
+STEP 1 — Create Rails app
+  rails new chatbot (Rails 8 defaults)
+  Models: Room (name), Message (body, user_name, content_type, room_id)
+
+STEP 2 — Authentication (simple)
+  No Devise — user types display name once
+  Stored in encrypted cookie: cookies.encrypted[:user_name]
+  sessions_controller.rb handles login
+
+STEP 3 — Rooms & messages
+  routes.rb:
+    - GET  /rooms           → room list
+    - GET  /rooms/:id       → chat page
+    - POST /rooms/:id/messages → send message (JSON)
+    - DELETE /rooms/:id/messages/:id → delete message
+
+STEP 4 — Real-time (Action Cable)
+  ChatChannel subscribes with room_id
+  On new message: Message model broadcasts HTML to room
+  JavaScript createConsumer() listens and appends messages
+
+STEP 5 — Solid Cable (production)
+  Problem: Redis not on free Render tier
+  Solution: solid_cable gem — cable messages stored in PostgreSQL
+  Migrations in db/cable_migrate/
+
+STEP 6 — Polling fallback (reliability)
+  Because WebSockets can be flaky on free hosting:
+  GET /rooms/:id/messages/recent?after=LAST_ID every 2 seconds
+  Fetches new messages if cable misses them
+
+STEP 7 — Media uploads (Active Storage)
+  has_one_attached :media on Message
+  Form sends multipart FormData via fetch() in chat.js
+  content_type detected: text | image | video | audio | file
+  Served via rails_storage_proxy_path (streams through Rails)
+
+STEP 8 — Frontend chat UI
+  chat.js: emoji, voice recording (MediaRecorder), file attach
+  media_viewer.js: image/video lightbox, audio player, delete
+  Full-screen preview overlay before sending media
+
+STEP 9 — Prepare for Render
+  - Switch production DB to PostgreSQL (pg gem)
+  - Dockerfile with assets:precompile
+  - docker-entrypoint runs db:prepare + cable/cache/queue migrations
+  - production.rb: hosts, SSL, Action Cable origins, SECRET_KEY_BASE
+
+
+================================================================================
+5. HOW FEATURES WORK (METHODS & FLOW)
+================================================================================
+
+LOGIN
+  User submits name → SessionsController#create
+  → cookie set → redirect to General room
+
+SEND TEXT MESSAGE
+  1. User presses Enter or Send
+  2. chat.js sendMessage() → POST /rooms/:id/messages (JSON)
+  3. MessagesController#create saves Message
+  4. Returns { html, id } — appends own message immediately
+  5. after_create_commit → ChatChannel.broadcast_to(room, html: ...)
+  6. Other browsers receive via WebSocket OR polling /recent
+
+SEND MEDIA
+  1. User picks file → full-screen preview
+  2. Send button or Enter → FormData with message[media]
+  3. Same create flow + Active Storage saves file to disk (or S3)
+
+REAL-TIME UPDATE (two paths)
+  A) Action Cable: ChatChannel → received(data) → appendMessageHtml
+  B) Polling: every 2s fetch /messages/recent?after=N
+
+DELETE MESSAGE
+  1. Click Delete (footer or on image/video)
+  2. media_viewer.js deleteMessage() → DELETE /rooms/:id/messages/:id
+  3. Stops video/audio first (prevents 500 errors on dead URLs)
+  4. Removes from DOM; broadcast tells other users to remove too
+
+VOICE MESSAGE
+  1. Record button → MediaRecorder API (browser)
+  2. Blob sent as message[media] with voice-*.webm filename
+  3. Detected as audio content_type
+
+
+================================================================================
+6. HOW DEPLOYMENT ON RENDER WORKS
+================================================================================
+
+STEP 1 — Push code to GitHub
+  git init → commit → push to github.com/YourUser/my-rails-chatbot
+
+STEP 2 — Create PostgreSQL on Render
+  Dashboard → New → PostgreSQL (same region as web service)
+  Note: Internal Database URL
+
+STEP 3 — Create Web Service (Docker)
+  Dashboard → New → Web Service → connect GitHub repo
+  Render detects Dockerfile automatically
+  Runtime: Docker
+
+STEP 4 — Set environment variables (Web Service → Environment)
+  Required:
+    RAILS_ENV=production
+    SECRET_KEY_BASE=<run: bin/rails secret locally>
+    DATABASE_URL=<Internal Database URL from Postgres>
+  Recommended:
+    SOLID_QUEUE_IN_PUMA=1
+    WEB_CONCURRENCY=1
+  Optional (persistent media):
+    AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_BUCKET
+
+STEP 5 — Deploy
+  Render builds Docker image:
+    - bundle install
+    - rails assets:precompile (CSS/JS)
+  On container start (docker-entrypoint):
+    - rails db:prepare (main tables)
+    - rails db:migrate:cable cache queue (Solid gems)
+  Puma starts on PORT (Render sets this automatically)
+
+STEP 6 — Open app
+  https://your-app-name.onrender.com
+  Health check: /up
+
+Alternative: render.yaml Blueprint
+  Defines chatbot-db + chatbot web service in one file
+  Dashboard → Blueprints → New Blueprint Instance
+
+
+================================================================================
+7. ENVIRONMENT VARIABLES REFERENCE
+================================================================================
+
+Variable              | Required | Purpose
+----------------------|----------|----------------------------------
+RAILS_ENV             | Yes      | Must be "production" on Render
+SECRET_KEY_BASE       | Yes*     | Session/cookie encryption (*or RAILS_MASTER_KEY)
+DATABASE_URL          | Yes      | PostgreSQL connection string
+SOLID_QUEUE_IN_PUMA   | Recommended | Run jobs inside Puma
+WEB_CONCURRENCY       | Recommended | Use "1" on free tier
+RENDER_EXTERNAL_URL   | Auto     | Set by Render for host/cable
+AWS_*                 | Optional | S3 for media that survives restarts
+
+
+================================================================================
+8. LOCAL DEVELOPMENT
+================================================================================
+
+  bin/setup          # install gems, prepare SQLite DB
+  bin/dev            # start server (or: bin/rails server)
+  open http://localhost:3000
+
+  Uses SQLite in storage/ — no PostgreSQL needed locally
+  Media files saved to storage/ folder locally
+
+
+================================================================================
+9. COMMON ISSUES & FIXES
+================================================================================
+
+Issue: UI has no styling on Render
+Fix:   Dockerfile must run `rails assets:precompile`
+
+Issue: Missing secret_key_base
+Fix:   Set SECRET_KEY_BASE on Render from `bin/rails secret`
+
+Issue: Database connection failed
+Fix:   Link DATABASE_URL (Internal URL) from Render Postgres
+
+Issue: Real-time not working
+Fix:   Solid Cable migrations + polling fallback (already in app)
+       Set WEB_CONCURRENCY=1
+
+Issue: Media 404/500 after delete
+Fix:   JS stops video/audio before DOM remove; treat 404 delete as OK
+
+Issue: Media lost after redeploy
+Fix:   Use AWS S3 env vars (Render disk is ephemeral)
+
+Issue: Free tier slow first load
+Fix:   Normal — app spins down after 15 min inactivity (~50s wake)
+
+
+================================================================================
+QUICK COMMAND REFERENCE
+================================================================================
+
+  bin/rails server              Run locally
+  bin/rails db:migrate          Migrate SQLite (dev)
+  bin/rails secret              Generate SECRET_KEY_BASE
+  bin/rails routes              See all URLs
+  bin/rails console             Rails REPL (production: Render shell)
+
+  git add . && git commit -m "msg" && git push   Trigger Render deploy
+
+
+================================================================================
+END OF STEPS.txt
+================================================================================

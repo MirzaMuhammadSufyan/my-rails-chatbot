@@ -3,7 +3,7 @@ class Message < ApplicationRecord
 
   belongs_to :room
 
-  has_one_attached :media 
+  has_one_attached :media, dependent: :purge_later
 
   validates :user_name, presence: true
   validates :content_type, inclusion: { in: CONTENT_TYPES }

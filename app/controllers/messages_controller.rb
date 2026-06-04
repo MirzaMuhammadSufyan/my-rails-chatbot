@@ -3,14 +3,19 @@ class MessagesController < ApplicationController
   before_action :set_room
 
   def destroy
-    @message = @room.messages.find(params[:id])
+    @message = @room.messages.find_by(id: params[:id])
+    return head :no_content unless @message
 
     unless @message.user_name == cookies.encrypted[:user_name]
       head :forbidden
       return
     end
 
+    @message.media.purge_later if @message.media.attached?
     @message.destroy!
+    head :no_content
+  rescue StandardError => e
+    Rails.logger.error("[MessagesController#destroy] #{e.class}: #{e.message}")
     head :no_content
   end
 
