@@ -11,11 +11,9 @@ databases:
 services:
   - type: web
     name: chatbot
-    runtime: ruby
+    runtime: docker
     plan: free
-    buildCommand: "./bin/render-build.sh"
-    # preDeployCommand: "./bin/rails db:prepare"  # paid plans only
-    startCommand: "bundle exec puma -C config/puma.rb"
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: RAILS_ENV
         value: production

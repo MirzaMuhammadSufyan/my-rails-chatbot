@@ -3,6 +3,9 @@ require "active_support/core_ext/integer/time"
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
 
+  # Render: set RAILS_MASTER_KEY (from config/master.key) or SECRET_KEY_BASE (bin/rails secret).
+  config.secret_key_base = ENV["SECRET_KEY_BASE"] if ENV["SECRET_KEY_BASE"].present?
+
   # Code is not reloaded between requests.
   config.enable_reloading = false
 

@@ -6,8 +6,13 @@ if [ -z "${LD_PRELOAD+x}" ]; then
     export LD_PRELOAD
 fi
 
-# If running the rails server then create or migrate existing database
-if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
+if [ -z "${RAILS_MASTER_KEY:-}" ] && [ -z "${SECRET_KEY_BASE:-}" ]; then
+  echo "ERROR: Set RAILS_MASTER_KEY or SECRET_KEY_BASE in Render environment variables." >&2
+  exit 1
+fi
+
+# Migrate when starting the web server (Docker / Render).
+if [[ "$*" == *"puma"* ]] || [[ "${@: -1:1}" == "server" ]]; then
   ./bin/rails db:prepare
 fi
 
