@@ -8,4 +8,13 @@ class ApplicationController < ActionController::Base
   def current_user_name
     cookies.encrypted[:user_name]
   end
+
+  def set_user_name_cookie(name)
+    cookies.encrypted[:user_name] = {
+      value: name,
+      expires: 1.year.from_now,
+      httponly: true,
+      same_site: :lax
+    }
+  end
 end

@@ -18,13 +18,16 @@
       <p class="flash flash--alert" role="alert"><%= flash[:alert] %></p>
     <% end %>
 
-    <div class="rooms-profile">
+    <%= form_with url: session_path, method: :patch, local: true, class: "rooms-profile" do %>
       <span class="rooms-profile-avatar" aria-hidden="true"><%= current_user_name.to_s.first.upcase %></span>
-      <div>
-        <p class="rooms-profile-label">Signed in as</p>
-        <p class="rooms-profile-name"><%= current_user_name %></p>
+      <div class="rooms-profile-fields">
+        <label class="rooms-profile-label" for="user_name">Signed in as</label>
+        <div class="rooms-profile-edit">
+          <%= text_field_tag :user_name, current_user_name, id: "user_name", maxlength: 50, required: true, class: "rooms-profile-input", autocomplete: "nickname", aria: { label: "Display name" } %>
+          <%= submit_tag "Save", class: "btn rooms-profile-save" %>
+        </div>
       </div>
-    </div>
+    <% end %>
 
     <section class="panel">
       <div class="panel-head">
