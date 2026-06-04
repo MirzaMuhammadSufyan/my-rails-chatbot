@@ -2,60 +2,78 @@
   <header class="rooms-topbar">
     <div class="rooms-topbar-text">
       <p class="rooms-eyebrow">Chatbot</p>
-      <h1>Rooms</h1>
+      <h1>Your rooms</h1>
     </div>
-    <%= link_to "General", root_path, class: "pill-link" %>
+    <%= link_to root_path, class: "pill-link pill-link--accent" do %>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      General
+    <% end %>
   </header>
 
   <div class="rooms-body">
     <% if flash[:notice] %>
-      <p class="flash flash--notice"><%= flash[:notice] %></p>
+      <p class="flash flash--notice" role="status"><%= flash[:notice] %></p>
     <% end %>
     <% if flash[:alert] %>
-      <p class="flash flash--alert"><%= flash[:alert] %></p>
+      <p class="flash flash--alert" role="alert"><%= flash[:alert] %></p>
     <% end %>
 
-    <p class="rooms-user">Signed in as <strong><%= current_user_name %></strong></p>
+    <div class="rooms-profile">
+      <span class="rooms-profile-avatar" aria-hidden="true"><%= current_user_name.to_s.first.upcase %></span>
+      <div>
+        <p class="rooms-profile-label">Signed in as</p>
+        <p class="rooms-profile-name"><%= current_user_name %></p>
+      </div>
+    </div>
 
     <section class="panel">
-      <h2 class="panel-title">Active rooms</h2>
-      <ul class="room-list">
-        <% @rooms.each do |room| %>
-          <li class="room-list-item">
-            <%= link_to room, class: "room-item" do %>
-              <span class="room-avatar" aria-hidden="true"><%= room.name.first.upcase %></span>
-              <span class="room-info">
-                <span class="room-name"><%= room.name %></span>
-                <span class="room-hint">Open chat</span>
-              </span>
-              <span class="room-chevron" aria-hidden="true">›</span>
-            <% end %>
-            <% unless room.general? %>
-              <%= button_to room_path(room),
-                    method: :delete,
-                    class: "room-delete-btn",
-                    title: "Delete room",
-                    aria: { label: "Delete #{room.name}" },
-                    form: {
-                      class: "room-delete-form",
-                      onsubmit: "return confirm('Delete “#{room.name}” and all its messages?')"
-                    } do %>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+      <div class="panel-head">
+        <h2 class="panel-title">Rooms</h2>
+        <span class="panel-badge"><%= @rooms.size %></span>
+      </div>
+      <% if @rooms.any? %>
+        <ul class="room-list">
+          <% @rooms.each do |room| %>
+            <li class="room-list-item">
+              <%= link_to room, class: "room-item" do %>
+                <span class="room-avatar" aria-hidden="true"><%= room.name.first.upcase %></span>
+                <span class="room-info">
+                  <span class="room-name"><%= room.name %></span>
+                  <span class="room-hint"><%= room.general? ? "Default room" : "Tap to open" %></span>
+                </span>
+                <span class="room-chevron" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                </span>
               <% end %>
-            <% end %>
-          </li>
-        <% end %>
-      </ul>
+              <% unless room.general? %>
+                <%= button_to room_path(room),
+                      method: :delete,
+                      class: "room-delete-btn",
+                      title: "Delete room",
+                      aria: { label: "Delete #{room.name}" },
+                      form: {
+                        class: "room-delete-form",
+                        onsubmit: "return confirm('Delete “#{room.name}” and all its messages?')"
+                      } do %>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                <% end %>
+              <% end %>
+            </li>
+          <% end %>
+        </ul>
+      <% else %>
+        <p class="panel-empty">No rooms yet — create one below.</p>
+      <% end %>
     </section>
 
-    <section class="panel">
-      <h2 class="panel-title">Create room</h2>
+    <section class="panel panel--create">
+      <h2 class="panel-title">New room</h2>
       <%= form_with model: Room.new, url: rooms_path, local: true do |f| %>
         <div class="field">
           <%= f.label :name, "Room name" %>
           <%= f.text_field :name, required: true, placeholder: "Design, Dev, Random…" %>
         </div>
-        <%= f.submit "Create room", class: "btn btn-glow btn-block" %>
+        <%= f.submit "Create room", class: "btn btn-primary btn-block" %>
       <% end %>
     </section>
   </div>

@@ -46,8 +46,10 @@ COPY . .
 # Precompile bootsnap code for faster boot times
 RUN bundle exec bootsnap precompile app/ lib/
 
-
-
+# Fingerprint CSS/JS for production (required — without this the app is unstyled on Render)
+RUN SECRET_KEY_BASE=buildtime_dummy_secret \
+    DATABASE_URL=postgresql://build:build@localhost:5432/build \
+    ./bin/rails assets:precompile
 
 # Final stage for app image
 FROM base

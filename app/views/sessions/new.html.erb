@@ -1,22 +1,24 @@
 <main class="auth">
   <section class="auth-card">
     <div class="auth-brand">
-      <span class="auth-logo">C</span>
-      <h1>Chatbot</h1>
-      <p>Real-time rooms for your team and friends.</p>
+      <div class="auth-logo" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <h1>Welcome to Chatbot</h1>
+      <p>Pick a name and jump into live rooms with your team.</p>
     </div>
 
     <div class="auth-form-wrap">
       <% if flash[:alert] %>
-        <p class="alert"><%= flash[:alert] %></p>
+        <p class="alert" role="alert"><%= flash[:alert] %></p>
       <% end %>
 
       <%= form_with url: session_path, method: :post, local: true, class: "auth-form" do %>
         <div class="field">
-          <label for="user_name">Display name</label>
-          <input type="text" name="user_name" id="user_name" required maxlength="50" autocomplete="nickname" placeholder="What should we call you?">
+          <label for="user_name">Your display name</label>
+          <input type="text" name="user_name" id="user_name" required maxlength="50" autocomplete="nickname" placeholder="e.g. Sufyan">
         </div>
-        <button type="submit" class="btn btn-glow btn-block">Continue</button>
+        <button type="submit" class="btn btn-primary btn-block">Enter chat</button>
       <% end %>
     </div>
   </section>

@@ -213,7 +213,12 @@ function buildWaveformBars(container, staticBars = false) {
   }
 }
 
+function dismissEmptyState(messagesEl) {
+  messagesEl.querySelector(".chat-empty")?.remove()
+}
+
 function appendMessageHtml(messagesEl, html, options = {}) {
+  dismissEmptyState(messagesEl)
   const temp = document.createElement("div")
   temp.innerHTML = html
   const article = temp.querySelector("article[data-message-id]")
