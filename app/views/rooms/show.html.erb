@@ -26,6 +26,15 @@
 
     <footer class="chat-dock">
       <%= form_with url: room_messages_path(@room), method: :post, local: true, html: { id: "chat-form", class: "chat-form", enctype: "multipart/form-data" } do %>
+        <div id="reply-bar" class="reply-bar" hidden>
+          <div class="reply-bar-content">
+            <span class="reply-bar-label">Replying to <strong id="reply-bar-author"></strong></span>
+            <span id="reply-bar-preview" class="reply-bar-preview"></span>
+          </div>
+          <button type="button" id="reply-bar-cancel" class="reply-bar-cancel" aria-label="Cancel reply">&times;</button>
+          <input type="hidden" name="message[reply_to_id]" id="message_reply_to_id" value="">
+        </div>
+
         <div id="emoji-picker" class="emoji-panel" role="listbox" aria-label="Emoji picker" hidden></div>
 
         <div id="voice-recording-ui" class="voice-recording-ui" hidden>
@@ -93,7 +102,7 @@
           </button>
 
           <label class="sr-only" for="message_body">Message</label>
-          <textarea name="message[body]" id="message_body" rows="1" placeholder="Type a message…"></textarea>
+          <textarea name="message[body]" id="message_body" rows="1" placeholder="Message…  :heart:  &lt;3  :shy  :angry"></textarea>
 
           <button type="button" id="record-voice" class="icon-btn" aria-label="Record voice">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>

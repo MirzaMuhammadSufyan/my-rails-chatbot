@@ -1,15 +1,6 @@
 import { createConsumer } from "@rails/actioncable"
 import { initMediaViewer, enhanceMessageElement, stripMessageMedia } from "media_viewer"
-
-const EMOJIS = [
-  "😀", "😃", "😄", "😁", "😅", "😂", "🤣", "😊",
-  "😇", "🙂", "😉", "😍", "🥰", "😘", "😋", "😎",
-  "🤔", "😐", "😑", "😶", "🙄", "😏", "😣", "😥",
-  "😮", "😯", "😲", "😳", "🥺", "😢", "😭", "😤",
-  "👍", "👎", "👏", "🙌", "🤝", "🙏", "💪", "✌️",
-  "❤️", "🧡", "💛", "💚", "💙", "💜", "🔥", "✨",
-  "🎉", "🎊", "💯", "✅", "❌", "⭐", "🌟", "💬"
-]
+import { EMOJIS, applyEmojiShortcutsToText } from "emojis"
 
 const WAVE_BARS = 28
 
@@ -51,6 +42,8 @@ export function initChat(roomId) {
   initScrollToEnd(messagesEl)
   initMediaViewer(messagesEl)
   initEmojiPicker()
+  initEmojiShortcuts(textarea)
+  initReplyHandlers(messagesEl, form)
   initMediaInputs(form, pendingPreview)
   initGlobalComposeKeys(form, pendingPreview)
   initMessagePolling(roomId, messagesEl)
@@ -75,11 +68,7 @@ export function initChat(roomId) {
       },
       received(data) {
         if (data.delete_message_id) {
-          const article = document.getElementById(`message_${data.delete_message_id}`)
-          if (article) {
-            stripMessageMedia(article)
-            removeMessagePreserveScroll(messagesEl, article)
-          }
+          removeMessageById(messagesEl, data.delete_message_id)
           return
         }
         if (!data.html) return
@@ -279,6 +268,51 @@ function initAutoGrow(textarea) {
   resize()
 }
 
+function initEmojiShortcuts(textarea) {
+  if (!textarea) return
+
+  const run = () => {
+    const before = textarea.value
+    const after = applyEmojiShortcutsToText(before)
+    if (after !== before) {
+      textarea.value = after
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+    }
+  }
+
+  textarea.addEventListener("input", run)
+  textarea.addEventListener("blur", run)
+}
+
+function initReplyHandlers(messagesEl, form) {
+  const replyBar = document.getElementById("reply-bar")
+  const replyInput = document.getElementById("message_reply_to_id")
+  const replyAuthor = document.getElementById("reply-bar-author")
+  const replyPreview = document.getElementById("reply-bar-preview")
+
+  document.getElementById("reply-bar-cancel")?.addEventListener("click", () => clearReply())
+
+  messagesEl.addEventListener("click", (event) => {
+    const btn = event.target.closest(".msg-reply")
+    if (!btn) return
+    event.preventDefault()
+
+    if (replyInput) replyInput.value = btn.dataset.replyId || ""
+    if (replyAuthor) replyAuthor.textContent = btn.dataset.replyAuthor || ""
+    if (replyPreview) replyPreview.textContent = btn.dataset.replyPreview || ""
+    if (replyBar) replyBar.hidden = false
+
+    document.getElementById("message_body")?.focus()
+  })
+}
+
+function clearReply() {
+  const replyBar = document.getElementById("reply-bar")
+  const replyInput = document.getElementById("message_reply_to_id")
+  if (replyInput) replyInput.value = ""
+  if (replyBar) replyBar.hidden = true
+}
+
 function initEmojiPicker() {
   const toggle = document.getElementById("emoji-toggle")
   const picker = document.getElementById("emoji-picker")
@@ -330,22 +364,38 @@ function getLastMessageId(messagesEl) {
   return maxId
 }
 
+function getVisibleMessageIds(messagesEl) {
+  return [...messagesEl.querySelectorAll("article[data-message-id]")].map((el) =>
+    parseInt(el.dataset.messageId, 10)
+  ).filter((id) => id > 0)
+}
+
+function removeMessageById(messagesEl, messageId) {
+  const article = document.getElementById(`message_${messageId}`)
+  if (!article) return
+  stripMessageMedia(article)
+  removeMessagePreserveScroll(messagesEl, article)
+}
+
 function initMessagePolling(roomId, messagesEl) {
-  const pollUrl = `/rooms/${roomId}/messages/recent`
+  const syncUrl = `/rooms/${roomId}/messages/sync`
 
   setInterval(async () => {
     const after = getLastMessageId(messagesEl)
+    const ids = getVisibleMessageIds(messagesEl).join(",")
+
     try {
-      const response = await fetch(`${pollUrl}?after=${after}`, {
+      const response = await fetch(`${syncUrl}?after=${after}&ids=${ids}`, {
         headers: { Accept: "application/json" },
         credentials: "same-origin"
       })
       if (!response.ok) return
 
       const data = await response.json()
-      if (!data.messages?.length) return
 
-      data.messages.forEach(({ html }) => {
+      data.removed_ids?.forEach((id) => removeMessageById(messagesEl, id))
+
+      data.messages?.forEach(({ html }) => {
         if (html) appendMessageHtml(messagesEl, html, { scroll: isNearBottom(messagesEl) })
       })
     } catch {
@@ -476,6 +526,7 @@ function resetComposerState(form, composer, pendingPreview, recordingUi, draftUi
   stopPreviewAudio()
 
   document.getElementById("emoji-picker").hidden = true
+  clearReply()
 }
 
 function showRecordingUi(recordingUi, draftUi, composer) {
@@ -552,7 +603,7 @@ async function sendMessage(form, voiceBlobParam, messagesEl) {
   const hasFile = fileInput?.files?.[0]
   const hasVoice = Boolean(voiceBlobParam)
 
-  if (!body && !hasFile && !hasVoice) {
+  if (!processedBody && !hasFile && !hasVoice) {
     alert("Type something, add an emoji, or attach media first.")
     return false
   }
@@ -569,7 +620,11 @@ async function sendMessage(form, voiceBlobParam, messagesEl) {
   }
 
   const formData = new FormData()
-  if (body) formData.append("message[body]", body)
+  const processedBody = body ? applyEmojiShortcutsToText(body) : ""
+  if (processedBody) formData.append("message[body]", processedBody)
+
+  const replyId = document.getElementById("message_reply_to_id")?.value
+  if (replyId) formData.append("message[reply_to_id]", replyId)
 
   if (hasVoice) {
     formData.append("message[media]", voiceBlobParam, `voice-${Date.now()}.webm`)

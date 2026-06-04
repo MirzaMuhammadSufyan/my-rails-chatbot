@@ -8,6 +8,7 @@ Rails.application.routes.draw do
   resources :rooms, only: %i[index show create destroy] do
     resources :messages, only: %i[create destroy] do
       get :recent, on: :collection
+      get :sync, on: :collection
     end
   end
 

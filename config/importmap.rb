@@ -2,5 +2,6 @@
 
 pin "application"
 pin "chat"
+pin "emojis"
 pin "media_viewer"
 pin "@rails/actioncable", to: "@rails--actioncable.js" # @8.1.300

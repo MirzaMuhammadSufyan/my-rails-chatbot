@@ -11,7 +11,6 @@ class MessagesController < ApplicationController
       return
     end
 
-    @message.media.purge_later if @message.media.attached?
     @message.destroy!
     head :no_content
   rescue StandardError => e
@@ -19,10 +18,27 @@ class MessagesController < ApplicationController
     head :no_content
   end
 
+  def sync
+    client_ids = params[:ids].to_s.split(",").map(&:to_i).reject(&:zero?)
+    server_ids = @room.messages.pluck(:id)
+    removed_ids = client_ids - server_ids
+
+    after_id = params[:after].to_i
+    new_messages = @room.messages
+      .includes(:reply_to, media_attachment: :blob)
+      .where("id > ?", after_id)
+      .order(:id)
+
+    render json: {
+      removed_ids: removed_ids,
+      messages: new_messages.map { |message| { id: message.id, html: message_html_fragment(message) } }
+    }
+  end
+
   def recent
     after_id = params[:after].to_i
     messages = @room.messages
-      .includes(media_attachment: :blob)
+      .includes(:reply_to, media_attachment: :blob)
       .where("id > ?", after_id)
       .order(:id)
 
@@ -35,6 +51,11 @@ class MessagesController < ApplicationController
     @message = @room.messages.build(message_params)
     @message.user_name = cookies.encrypted[:user_name]
     @message.content_type = detect_content_type(@message)
+
+    if @message.reply_to_id.present?
+      reply = @room.messages.find_by(id: @message.reply_to_id)
+      @message.reply_to = reply
+    end
 
     unless @message.save
       render json: { errors: @message.errors.full_messages }, status: :unprocessable_entity
@@ -61,7 +82,7 @@ class MessagesController < ApplicationController
   end
 
   def message_params
-    params.require(:message).permit(:body, :media)
+    params.require(:message).permit(:body, :media, :reply_to_id)
   end
 
   def detect_content_type(message)

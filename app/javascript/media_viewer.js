@@ -112,8 +112,6 @@ async function deleteMessage(url, article) {
   if (!confirm("Delete this message?")) return
 
   article.dataset.deleting = "true"
-  stripMessageMedia(article)
-
   const token = document.querySelector('meta[name="csrf-token"]')?.content
 
   try {
@@ -127,6 +125,7 @@ async function deleteMessage(url, article) {
     })
 
     if (response.ok || response.status === 204 || response.status === 404) {
+      stripMessageMedia(article)
       removeMessageElement(article)
       return
     }
@@ -134,7 +133,7 @@ async function deleteMessage(url, article) {
     delete article.dataset.deleting
     alert("Could not delete message.")
   } catch {
-    delete article.dataset.deleting
+    stripMessageMedia(article)
     removeMessageElement(article)
   }
 }

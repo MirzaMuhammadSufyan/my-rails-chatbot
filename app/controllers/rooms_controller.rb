@@ -8,7 +8,7 @@ class RoomsController < ApplicationController
   end
 
   def show
-    @messages = @room.messages.includes(media_attachment: :blob)
+    @messages = @room.messages.includes(:reply_to, media_attachment: :blob)
   end
 
   def create
