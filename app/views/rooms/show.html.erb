@@ -26,12 +26,6 @@
 
     <footer class="chat-dock">
       <%= form_with url: room_messages_path(@room), method: :post, local: true, html: { id: "chat-form", class: "chat-form", enctype: "multipart/form-data" } do %>
-        <div id="pending-media-preview" class="pending-media-preview" hidden>
-          <button type="button" id="pending-media-cancel" class="pending-media-cancel" aria-label="Cancel attachment">&times;</button>
-          <div id="pending-media-visual" class="pending-media-visual"></div>
-          <p id="pending-media-name" class="pending-media-name"></p>
-          <p class="pending-media-hint">Enter to send · Esc to cancel</p>
-        </div>
         <div id="emoji-picker" class="emoji-panel" role="listbox" aria-label="Emoji picker" hidden></div>
 
         <div id="voice-recording-ui" class="voice-recording-ui" hidden>
@@ -111,6 +105,15 @@
         </div>
       <% end %>
     </footer>
+
+    <div id="pending-media-overlay" class="pending-media-overlay" hidden aria-modal="true" role="dialog" aria-label="Attachment preview">
+      <button type="button" id="pending-media-cancel" class="pending-media-close" aria-label="Cancel attachment">&times;</button>
+      <div id="pending-media-visual" class="pending-media-visual-full"></div>
+      <div class="pending-media-bar">
+        <p id="pending-media-name" class="pending-media-name"></p>
+        <p class="pending-media-hint">Enter to send · Esc to cancel</p>
+      </div>
+    </div>
 
     <div id="media-lightbox" class="media-lightbox" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="Media viewer">
       <button type="button" class="media-lightbox-backdrop" aria-label="Close"></button>

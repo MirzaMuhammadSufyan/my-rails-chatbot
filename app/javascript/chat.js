@@ -40,7 +40,7 @@ export function initChat(roomId) {
   const playPreviewBtn = document.getElementById("voice-play-preview")
   const recordingUi = document.getElementById("voice-recording-ui")
   const draftUi = document.getElementById("voice-draft-ui")
-  const pendingPreview = document.getElementById("pending-media-preview")
+  const pendingPreview = document.getElementById("pending-media-overlay")
   const textarea = document.getElementById("message_body")
 
   if (!messagesEl || !form) return
@@ -53,6 +53,7 @@ export function initChat(roomId) {
   initEmojiPicker()
   initMediaInputs(form, pendingPreview)
   initGlobalComposeKeys(form, pendingPreview)
+  initMessagePolling(roomId, messagesEl)
   if (textarea) {
     initAutoGrow(textarea)
     initEnterToSend(textarea, form)
@@ -175,7 +176,7 @@ function initGlobalComposeKeys(form, pendingPreview) {
 
 function composeEnterHandled(form) {
   const draftUi = document.getElementById("voice-draft-ui")
-  const pending = document.getElementById("pending-media-preview")
+  const pending = document.getElementById("pending-media-overlay")
   const voiceReady = draftUi && !draftUi.hidden && voiceBlob
   const mediaReady = pending && !pending.hidden && pickFirstFileInput()
   return voiceReady || mediaReady
@@ -311,6 +312,39 @@ function insertAtCursor(textarea, text) {
   textarea.selectionEnd = pos
 }
 
+function getLastMessageId(messagesEl) {
+  let maxId = 0
+  messagesEl.querySelectorAll("article[data-message-id]").forEach((article) => {
+    const id = parseInt(article.dataset.messageId, 10)
+    if (id > maxId) maxId = id
+  })
+  return maxId
+}
+
+function initMessagePolling(roomId, messagesEl) {
+  const pollUrl = `/rooms/${roomId}/messages/recent`
+
+  setInterval(async () => {
+    const after = getLastMessageId(messagesEl)
+    try {
+      const response = await fetch(`${pollUrl}?after=${after}`, {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin"
+      })
+      if (!response.ok) return
+
+      const data = await response.json()
+      if (!data.messages?.length) return
+
+      data.messages.forEach(({ html }) => {
+        if (html) appendMessageHtml(messagesEl, html, { scroll: isNearBottom(messagesEl) })
+      })
+    } catch {
+      /* ignore transient poll errors */
+    }
+  }, 2000)
+}
+
 function setConnectionStatus(connected) {
   const badge = document.querySelector(".chat-topbar-live")
   if (!badge) return
@@ -361,7 +395,7 @@ function showPendingMediaPreview(panel, file, kind) {
     const img = document.createElement("img")
     img.src = pendingPreviewUrl
     img.alt = "Preview"
-    img.className = "pending-media-img"
+    img.className = "pending-media-img-full"
     visual.appendChild(img)
   } else if (kind === "video" || file.type.startsWith("video/")) {
     pendingPreviewUrl = URL.createObjectURL(file)
@@ -369,16 +403,31 @@ function showPendingMediaPreview(panel, file, kind) {
     video.src = pendingPreviewUrl
     video.controls = true
     video.playsInline = true
-    video.className = "pending-media-video"
+    video.className = "pending-media-video-full"
     visual.appendChild(video)
+  } else if (kind === "audio" || file.type.startsWith("audio/")) {
+    pendingPreviewUrl = URL.createObjectURL(file)
+    const audio = document.createElement("audio")
+    audio.src = pendingPreviewUrl
+    audio.controls = true
+    audio.className = "pending-media-audio-full"
+    visual.appendChild(audio)
   } else {
     const doc = document.createElement("div")
-    doc.className = "pending-media-doc"
-    doc.textContent = "📄"
+    doc.className = "pending-media-doc-full"
+    const icon = document.createElement("span")
+    icon.className = "pending-media-doc-icon"
+    icon.textContent = "📄"
+    icon.setAttribute("aria-hidden", "true")
+    const name = document.createElement("span")
+    name.className = "pending-media-doc-name"
+    name.textContent = file.name
+    doc.append(icon, name)
     visual.appendChild(doc)
   }
 
   panel.hidden = false
+  document.body.classList.add("pending-media-open")
 }
 
 function clearPendingMediaPreview(panel, hidePanel = true) {
@@ -393,7 +442,10 @@ function clearPendingMediaPreview(panel, hidePanel = true) {
   const nameEl = document.getElementById("pending-media-name")
   if (nameEl) nameEl.textContent = ""
 
-  if (panel && hidePanel) panel.hidden = true
+  if (panel && hidePanel) {
+    panel.hidden = true
+    document.body.classList.remove("pending-media-open")
+  }
 }
 
 function resetComposerState(form, composer, pendingPreview, recordingUi, draftUi) {
@@ -534,18 +586,17 @@ async function sendMessage(form, voiceBlobParam, messagesEl) {
     return false
   }
 
-  if (!response.ok) {
+  if (response.status === 201) {
     const data = await response.json().catch(() => ({}))
-    alert(data.errors?.join("\n") || "Could not send message.")
-    return false
+    if (data.html && messagesEl) {
+      appendMessageHtml(messagesEl, data.html, { forceScroll: true })
+    }
+    return true
   }
 
   const data = await response.json().catch(() => ({}))
-  if (data.html && messagesEl) {
-    appendMessageHtml(messagesEl, data.html, { forceScroll: true })
-  }
-
-  return true
+  alert(data.errors?.join("\n") || "Could not send message.")
+  return false
 }
 
 function pickFirstFileInput() {

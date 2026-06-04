@@ -66,7 +66,7 @@ Rails.application.configure do
   config.hosts << /.*\.onrender\.com/
   config.hosts << app_host if app_host.present?
 
-  config.action_cable.disable_request_forgery_protection = false
+  config.action_cable.disable_request_forgery_protection = true
   config.action_cable.allowed_request_origins = [
     %r{https://.*\.onrender\.com},
     ENV["RENDER_EXTERNAL_URL"],
@@ -74,7 +74,11 @@ Rails.application.configure do
   ].compact
 
   if app_host.present?
-    config.action_mailer.default_url_options = { host: app_host, protocol: "https" }
+    url_options = { host: app_host, protocol: "https" }
+    config.action_controller.default_url_options = url_options
+    config.active_storage.default_url_options = url_options
+    Rails.application.routes.default_url_options = url_options
+    config.action_mailer.default_url_options = url_options
   end
 
   # Specify outgoing SMTP server. Remember to add smtp/* credentials via rails credentials:edit.

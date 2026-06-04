@@ -1123,6 +1123,7 @@ body.lightbox-open {
 }
 
 .pending-media-preview[hidden],
+.pending-media-overlay[hidden],
 .emoji-panel[hidden],
 .voice-recording-ui[hidden],
 .voice-draft-ui[hidden],
@@ -1202,6 +1203,97 @@ body.lightbox-open {
   font-weight: 600;
   color: var(--text);
   word-break: break-all;
+}
+
+/* Full-screen attachment preview before send */
+body.pending-media-open {
+  overflow: hidden;
+}
+
+.pending-media-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.96);
+}
+
+.pending-media-close {
+  position: absolute;
+  top: max(0.75rem, env(safe-area-inset-top));
+  right: max(0.75rem, env(safe-area-inset-right));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: 1.75rem;
+  line-height: 1;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.pending-media-visual-full {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 3.5rem 1rem 1rem;
+}
+
+.pending-media-img-full,
+.pending-media-video-full {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.pending-media-video-full {
+  background: #000;
+}
+
+.pending-media-audio-full {
+  width: min(100%, 420px);
+}
+
+.pending-media-doc-full {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.pending-media-doc-icon {
+  font-size: 4rem;
+}
+
+.pending-media-doc-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.pending-media-bar {
+  flex-shrink: 0;
+  padding: 1rem 1.25rem max(1rem, env(safe-area-inset-bottom));
+  text-align: center;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+}
+
+.pending-media-bar .pending-media-hint {
+  margin: 0.35rem 0 0;
 }
 
 .voice-recording-main,

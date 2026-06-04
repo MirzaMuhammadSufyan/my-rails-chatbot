@@ -14,16 +14,38 @@ class MessagesController < ApplicationController
     head :no_content
   end
 
+  def recent
+    after_id = params[:after].to_i
+    messages = @room.messages
+      .includes(media_attachment: :blob)
+      .where("id > ?", after_id)
+      .order(:id)
+
+    render json: {
+      messages: messages.map { |message| { id: message.id, html: message_html_fragment(message) } }
+    }
+  end
+
   def create
     @message = @room.messages.build(message_params)
     @message.user_name = cookies.encrypted[:user_name]
     @message.content_type = detect_content_type(@message)
 
-    if @message.save
-      html = message_html_fragment(@message)
-      render json: { html: html }, status: :created
-    else
+    unless @message.save
       render json: { errors: @message.errors.full_messages }, status: :unprocessable_entity
+      return
+    end
+
+    html = message_html_fragment(@message)
+    render json: { html: html, id: @message.id }, status: :created
+  rescue StandardError => e
+    Rails.logger.error("[MessagesController#create] #{e.class}: #{e.message}")
+    e.backtrace&.first(8)&.each { |line| Rails.logger.error(line) }
+
+    if @message&.persisted?
+      render json: { html: "", id: @message.id }, status: :created
+    else
+      render json: { errors: [ "Could not send message. Please try again." ] }, status: :internal_server_error
     end
   end
 
@@ -68,9 +90,6 @@ class MessagesController < ApplicationController
       locals: { message: message, current_user_name: cookies.encrypted[:user_name] },
       formats: [ :html ]
     )
-  rescue StandardError => e
-    Rails.logger.error("[MessagesController#message_html_fragment] #{e.class}: #{e.message}")
-    ""
   end
 
   def require_user_name

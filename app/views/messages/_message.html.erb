@@ -3,7 +3,7 @@
 <% hue = message.user_name.to_s.bytes.sum % 360 %>
 <% visual = message.media.attached? && message.content_type.in?(%w[image video]) %>
 <% audio_msg = message.media.attached? && message.content_type == "audio" %>
-<% media_url = message.media.attached? ? message_media_url(message.media) : nil %>
+<% media_url = message.media_proxy_path if message.media.attached? %>
 
 <article id="<%= dom_id(message) %>" class="msg<%= " msg--own" if own %>" data-message-id="<%= message.id %>" data-author="<%= message.user_name %>">
   <% unless own %>

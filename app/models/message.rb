@@ -17,6 +17,20 @@ class Message < ApplicationRecord
     body.to_s
   end
 
+  def media_proxy_path
+    return unless media.attached?
+
+    Rails.application.routes.url_helpers.rails_storage_proxy_path(media, only_path: true)
+  end
+
+  def broadcast_html
+    ApplicationController.render(
+      partial: "messages/message",
+      locals: { message: self, current_user_name: nil },
+      formats: [ :html ]
+    )
+  end
+
   private
 
   def body_or_media_present
@@ -39,13 +53,7 @@ class Message < ApplicationRecord
   end
 
   def broadcast_append
-    ChatChannel.broadcast_to(
-      room,
-      html: ApplicationController.render(
-        partial: "messages/message",
-        locals: { message: self, current_user_name: nil }
-      )
-    )
+    ChatChannel.broadcast_to(room, html: broadcast_html)
   end
 
   def broadcast_delete_later
