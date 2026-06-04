@@ -9,3 +9,4 @@ bin/rails assets:clean
 
 # Multi-db (primary + Solid Cache/Queue/Cable). On paid plans, move this to preDeployCommand.
 bin/rails db:prepare
+bin/rails db:migrate:cable db:migrate:cache db:migrate:queue

@@ -24,8 +24,9 @@ Rails.application.configure do
   # Enable serving of images, stylesheets, and JavaScripts from an asset server.
   # config.asset_host = "http://assets.example.com"
 
-  # Render has an ephemeral filesystem — use S3 when AWS_BUCKET is set (required for chat media).
+  # Render: local disk works on a single instance; set AWS_BUCKET for persistent media.
   config.active_storage.service = ENV["AWS_BUCKET"].present? ? :amazon : :local
+  config.active_storage.resolve_model_to_route = :rails_storage_proxy
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   config.assume_ssl = true
@@ -62,12 +63,18 @@ Rails.application.configure do
 
   app_host = ENV["APP_HOST"].presence || ENV["RENDER_EXTERNAL_URL"]&.then { |url| URI.parse(url).host }
 
+  config.hosts << /.*\.onrender\.com/
+  config.hosts << app_host if app_host.present?
+
+  config.action_cable.disable_request_forgery_protection = false
+  config.action_cable.allowed_request_origins = [
+    %r{https://.*\.onrender\.com},
+    ENV["RENDER_EXTERNAL_URL"],
+    app_host.present? ? "https://#{app_host}" : nil
+  ].compact
+
   if app_host.present?
-    config.hosts << app_host
     config.action_mailer.default_url_options = { host: app_host, protocol: "https" }
-    cable_origins = ["https://#{app_host}"]
-    cable_origins << ENV["RENDER_EXTERNAL_URL"] if ENV["RENDER_EXTERNAL_URL"].present?
-    config.action_cable.allowed_request_origins = cable_origins.uniq
   end
 
   # Specify outgoing SMTP server. Remember to add smtp/* credentials via rails credentials:edit.
@@ -89,5 +96,12 @@ Rails.application.configure do
   # Only use :id for inspections in production.
   config.active_record.attributes_for_inspect = [ :id ]
 
-  config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  config.host_authorization = {
+    exclude: ->(request) {
+      request.path == "/up" || request.path.start_with?("/cable", "/rails/active_storage")
+    }
+  }
+
+  # Allow chat media uploads (images, video, voice notes).
+  config.action_dispatch.max_request_size = 50.megabytes
 end

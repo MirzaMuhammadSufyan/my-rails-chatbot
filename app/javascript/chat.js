@@ -62,6 +62,16 @@ export function initChat(roomId) {
   consumer.subscriptions.create(
     { channel: "ChatChannel", room_id: roomId },
     {
+      connected() {
+        setConnectionStatus(true)
+      },
+      disconnected() {
+        setConnectionStatus(false)
+      },
+      rejected() {
+        setConnectionStatus(false)
+        console.error("ChatChannel subscription rejected")
+      },
       received(data) {
         if (data.delete_message_id) {
           const article = document.getElementById(`message_${data.delete_message_id}`)
@@ -301,6 +311,14 @@ function insertAtCursor(textarea, text) {
   textarea.selectionEnd = pos
 }
 
+function setConnectionStatus(connected) {
+  const badge = document.querySelector(".chat-topbar-live")
+  if (!badge) return
+  badge.textContent = connected ? "Live" : "Reconnecting…"
+  badge.classList.toggle("is-connected", connected)
+  badge.classList.toggle("is-disconnected", !connected)
+}
+
 function initMediaInputs(form, pendingPreview) {
   const composer = document.getElementById("chat-composer")
   const recordingUi = document.getElementById("voice-recording-ui")
@@ -308,23 +326,17 @@ function initMediaInputs(form, pendingPreview) {
 
   form.querySelectorAll("[data-media-input]").forEach((input) => {
     input.addEventListener("change", () => {
-      const btn = input.closest(".icon-btn--attach")
-      if (!btn) return
-
       if (input.files?.length > 0) {
         form.querySelectorAll("[data-media-input]").forEach((other) => {
-          if (other !== input) {
-            other.value = ""
-            other.closest(".icon-btn--attach")?.classList.remove("is-active")
-          }
+          if (other !== input) other.value = ""
         })
-        btn.classList.add("is-active")
+        input.closest("details.attach-dropdown")?.removeAttribute("open")
+
         showPendingMediaPreview(pendingPreview, input.files[0], input.dataset.kind)
         voiceBlob = null
         hideVoiceDraft(draftUi, composer)
         cancelRecording(recordingUi, draftUi, composer)
       } else {
-        btn.classList.remove("is-active")
         clearPendingMediaPreview(pendingPreview)
       }
     })
@@ -547,8 +559,8 @@ function pickFirstFileInput() {
 function clearFileInputs(form) {
   form.querySelectorAll("[data-media-input]").forEach((input) => {
     input.value = ""
-    input.closest(".icon-btn--attach")?.classList.remove("is-active")
   })
+  form.querySelectorAll("details.attach-dropdown").forEach((menu) => menu.removeAttribute("open"))
 }
 
 function scrollToBottom(el, force = false) {

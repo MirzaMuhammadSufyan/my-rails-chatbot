@@ -162,12 +162,9 @@ a:hover {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 560px;
   height: 100dvh;
-  margin: 0 auto;
+  margin: 0;
   background: var(--bg);
-  border-left: 1px solid var(--glass-border);
-  border-right: 1px solid var(--glass-border);
 }
 
 .rooms-topbar {
@@ -439,8 +436,6 @@ a:hover {
 
 /* —— Chat app —— */
 .chat-shell {
-  display: flex;
-  justify-content: center;
   width: 100%;
   height: 100dvh;
   background: var(--bg);
@@ -455,13 +450,9 @@ a:hover {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 720px;
   height: 100dvh;
-  margin: 0 auto;
+  margin: 0;
   background: var(--bg-feed);
-  border-left: 1px solid var(--glass-border);
-  border-right: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-lg);
 }
 
 .chat-topbar {
@@ -548,6 +539,13 @@ a:hover {
   background: rgba(52, 211, 153, 0.12);
   border: 1px solid rgba(52, 211, 153, 0.25);
   border-radius: 999px;
+  transition: color 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.chat-topbar-live.is-disconnected {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.3);
 }
 
 .chat-feed {
@@ -1619,14 +1617,5 @@ body.lightbox-open {
 
   .app--auth .auth {
     max-width: 420px;
-  }
-}
-
-@media (max-width: 480px) {
-  .chat-app,
-  .rooms-app {
-    border-left: none;
-    border-right: none;
-    max-width: none;
   }
 }

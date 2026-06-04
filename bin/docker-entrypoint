@@ -19,6 +19,7 @@ fi
 # Migrate when starting the web server (Docker / Render).
 if [[ "$*" == *"puma"* ]] || [[ "${@: -1:1}" == "server" ]]; then
   ./bin/rails db:prepare
+  ./bin/rails db:migrate:cable db:migrate:cache db:migrate:queue
 fi
 
 exec "${@}"
