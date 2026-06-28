@@ -62,19 +62,23 @@ Rails.application.configure do
   # config.action_mailer.raise_delivery_errors = false
 
   app_host = ENV["APP_HOST"].presence || ENV["RENDER_EXTERNAL_URL"]&.then { |url| URI.parse(url).host }
+  app_url = ENV["APP_URL"].presence || ENV["RENDER_EXTERNAL_URL"].presence
+  app_url = "https://#{app_host}" if app_url.blank? && app_host.present?
+  app_url = app_url.chomp("/") if app_url.present?
 
   config.hosts << /.*\.onrender\.com/
   config.hosts << app_host if app_host.present?
 
   config.action_cable.disable_request_forgery_protection = true
+  config.action_cable.url = "#{app_url}/cable" if app_url.present?
   config.action_cable.allowed_request_origins = [
     %r{https://.*\.onrender\.com},
-    ENV["RENDER_EXTERNAL_URL"],
+    app_url,
     app_host.present? ? "https://#{app_host}" : nil
   ].compact
 
   if app_host.present?
-    url_options = { host: app_host, protocol: "https" }
+    url_options = { host: app_host, protocol: app_url&.start_with?("https") ? "https" : "http" }
     config.action_controller.default_url_options = url_options
     config.active_storage.default_url_options = url_options
     Rails.application.routes.default_url_options = url_options
