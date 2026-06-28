@@ -105,29 +105,18 @@ async function switchCamera() {
   const nextFacing = currentFacingMode === "user" ? "environment" : "user"
   const oldVideoTrack = localStream.getVideoTracks()[0]
 
-  // Try applyConstraints first (no new stream needed, works on most mobile browsers)
-  if (oldVideoTrack) {
-    try {
-      await oldVideoTrack.applyConstraints({ facingMode: { ideal: nextFacing } })
-      currentFacingMode = nextFacing
-      attachLocal(localStream)
-      toast(`Switched to ${nextFacing === "user" ? "front" : "back"} camera`)
-      return
-    } catch { /* fall through to full track replacement */ }
-  }
-
-  // Full replacement: stop old track, get new stream with ideal facingMode
   try {
-    const newStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: nextFacing } },
-      audio: false
-    })
-    const newVideoTrack = newStream.getVideoTracks()[0]
-
+    // Stop old track first so the camera is fully released before requesting the new one
     if (oldVideoTrack) {
       localStream.removeTrack(oldVideoTrack)
       oldVideoTrack.stop()
     }
+
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: nextFacing },
+      audio: false
+    })
+    const newVideoTrack = newStream.getVideoTracks()[0]
     localStream.addTrack(newVideoTrack)
 
     const sender = pc?.getSenders().find((s) => s.track?.kind === "video")
@@ -141,6 +130,18 @@ async function switchCamera() {
     attachLocal(localStream)
     toast(`Switched to ${nextFacing === "user" ? "front" : "back"} camera`)
   } catch {
+    // Switching failed — restore the original camera
+    try {
+      const restored = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: currentFacingMode },
+        audio: false
+      })
+      const restoredTrack = restored.getVideoTracks()[0]
+      localStream.addTrack(restoredTrack)
+      const sender = pc?.getSenders().find((s) => s.track?.kind === "video")
+      if (sender) await sender.replaceTrack(restoredTrack)
+      attachLocal(localStream)
+    } catch { /* ignore restore failure */ }
     toast("Could not switch camera.")
   }
 }
