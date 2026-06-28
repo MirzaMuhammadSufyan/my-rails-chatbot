@@ -31,6 +31,7 @@ let callTimerInterval = null
 let ringtone = null
 let selectedVideoDeviceId = null
 let videoDevices = []
+let currentFacingMode = "user"
 let isVideoCall = false
 let incomingOfferHasVideo = false
 
@@ -99,42 +100,52 @@ async function getMediaStream({ audio = true, video = false, deviceId = null }) 
 }
 
 async function switchCamera() {
-  if (videoDevices.length < 2) {
+  if (!localStream) return
+
+  // On mobile, facingMode toggle is reliable. On desktop, cycle by deviceId.
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+
+  let constraints
+  if (isMobile) {
+    currentFacingMode = currentFacingMode === "user" ? "environment" : "user"
+    constraints = { video: { facingMode: { exact: currentFacingMode } }, audio: false }
+  } else {
     await updateVideoDevices()
-    if (videoDevices.length < 2) {
-      toast("No other camera available.")
-      return
-    }
+    if (videoDevices.length < 2) { toast("No other camera available."); return }
+    const currentIndex = videoDevices.findIndex((d) => d.deviceId === selectedVideoDeviceId)
+    const nextIndex = (currentIndex + 1) % videoDevices.length
+    selectedVideoDeviceId = videoDevices[nextIndex].deviceId
+    constraints = { video: { deviceId: { exact: selectedVideoDeviceId } }, audio: false }
   }
 
-  const currentIndex = videoDevices.findIndex((d) => d.deviceId === selectedVideoDeviceId)
-  const nextIndex = (currentIndex + 1) % videoDevices.length
-  selectedVideoDeviceId = videoDevices[nextIndex].deviceId
-
   try {
-    const videoOnlyStream = await getMediaStream({ audio: false, video: true, deviceId: selectedVideoDeviceId })
+    const videoOnlyStream = await navigator.mediaDevices.getUserMedia(constraints)
     const newVideoTrack = videoOnlyStream.getVideoTracks()[0]
-    const oldVideoTrack = localStream?.getVideoTracks()[0]
+    const oldVideoTrack = localStream.getVideoTracks()[0]
 
     if (oldVideoTrack) {
       localStream.removeTrack(oldVideoTrack)
       oldVideoTrack.stop()
     }
-
-    localStream?.addTrack(newVideoTrack)
+    localStream.addTrack(newVideoTrack)
 
     const sender = pc?.getSenders().find((s) => s.track?.kind === "video")
     if (sender) {
       await sender.replaceTrack(newVideoTrack)
-    } else if (pc && localStream) {
+    } else if (pc) {
       pc.addTrack(newVideoTrack, localStream)
     }
 
     attachLocal(localStream)
-    toast(`Switched camera to ${videoDevices[nextIndex].label || "next camera"}`)
+    toast(isMobile ? `Switched to ${currentFacingMode === "user" ? "front" : "back"} camera` : "Camera switched")
   } catch (error) {
-    console.error("[Call] switchCamera error", error)
-    toast("Could not switch camera.")
+    // exact facingMode failed — try without exact (some devices need this)
+    if (isMobile && error.name === "OverconstrainedError") {
+      currentFacingMode = currentFacingMode === "user" ? "environment" : "user"
+      toast("Only one camera available.")
+    } else {
+      toast("Could not switch camera.")
+    }
   }
 }
 
@@ -458,6 +469,7 @@ function cleanup() {
   remoteStream = null
   pendingCandidates = []
   peerName = null
+  currentFacingMode = "user"
   incomingOfferHasVideo = false
   stopTimer()
   const lv = document.getElementById("call-local-video")
