@@ -15,7 +15,7 @@ class CallChannel < ApplicationCable::Channel
   def signal(data)
     return unless @room
 
-    payload = data.slice("type", "offer", "answer", "candidate", "to", "from", "name")
+    payload = data.slice("type", "offer", "answer", "candidate", "audioOnly", "video", "to", "from", "name")
     payload["from"] ||= current_user_name
     payload["name"] ||= current_user_name
 

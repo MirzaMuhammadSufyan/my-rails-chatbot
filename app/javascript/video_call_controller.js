@@ -1,12 +1,10 @@
 /**
  * WebRTC 1-on-1 Audio/Video calling.
  *
- * Signalling is routed through the existing ChatChannel subscription in chat.js
- * via CustomEvents — no second WebSocket connection is ever opened.
- *
- *   Outgoing signal  → dispatch "call:send-signal"  → chat.js → ChatChannel#call_signal → server
- *   Incoming signal  ← "call:incoming-signal" ← chat.js ← ChatChannel broadcast ← server
+ * Signalling uses a dedicated CallChannel ActionCable subscription so
+ * it is completely independent of the chat message stream.
  */
+import { consumer } from "cable_consumer"
 
 const STUN = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -22,6 +20,8 @@ let state = S.IDLE
 let localStream = null
 let pc = null
 let remoteStream = null
+let callSub = null
+let roomId = null
 let myName = null
 let peerName = null
 let audioOnly = false
@@ -36,33 +36,38 @@ let incomingOfferHasVideo = false
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
-export function initVideoCall(_roomId, userName) {
+export function initVideoCall(rid, userName) {
+  roomId = rid
   myName = userName
-  listenForIncomingSignals()
+  subscribeCallChannel()
   wireButtons()
   initDraggablePip()
 }
 
-// ─── Signal transport (via CustomEvents → chat.js → ChatChannel) ──────────────
+// ─── Signal transport (CallChannel) ──────────────────────────────────────────
 
-function send(payload) {
-  document.dispatchEvent(new CustomEvent("call:send-signal", { detail: { ...payload, from: myName } }))
+function subscribeCallChannel() {
+  callSub = consumer.subscriptions.create(
+    { channel: "CallChannel", room_id: roomId },
+    {
+      connected() { console.debug('[Call] CallChannel connected') },
+      received(data) {
+        if (data.from === myName) return  // ignore own echo
+        switch (data.type) {
+          case "call-offer":    return onOffer(data)
+          case "call-answer":   return onAnswer(data)
+          case "ice-candidate": return onIce(data)
+          case "call-rejected": return onRejected(data)
+          case "call-ended":    return onEnded(data)
+          case "call-busy":     return onBusy(data)
+        }
+      }
+    }
+  )
 }
 
-function listenForIncomingSignals() {
-  document.addEventListener("call:incoming-signal", (e) => {
-    const data = e.detail
-    if (data.from === myName) return  // ignore own echo
-
-    switch (data.type) {
-      case "call-offer":    return onOffer(data)
-      case "call-answer":   return onAnswer(data)
-      case "ice-candidate": return onIce(data)
-      case "call-rejected": return onRejected(data)
-      case "call-ended":    return onEnded(data)
-      case "call-busy":     return onBusy(data)
-    }
-  })
+function send(payload) {
+  callSub?.perform("signal", { ...payload, from: myName })
 }
 
 async function updateVideoDevices() {
