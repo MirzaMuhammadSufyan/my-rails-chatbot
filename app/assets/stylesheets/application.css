@@ -2810,7 +2810,7 @@ body.pending-media-open {
 }
 
 .call-remote-video.is-audio-only,
-.call-remote-video:not([srcObject]) {
+.call-remote-video:not(.has-stream) {
   display: none;
 }
 
@@ -2823,7 +2823,7 @@ body.pending-media-open {
   color: rgba(255, 255, 255, 0.25);
 }
 
-.call-remote-video[srcObject] ~ .call-remote-placeholder {
+.call-remote-video.has-stream ~ .call-remote-placeholder {
   display: none;
 }
 

@@ -274,6 +274,7 @@ function createPc() {
       if (rv.srcObject !== remoteStream) {
         rv.srcObject = remoteStream
       }
+      rv.classList.add("has-stream")
       rv.play().catch((err) => console.warn('[Call] remote video play failed', err))
     }
     if (state !== S.CONNECTED) {
@@ -458,7 +459,7 @@ function cleanup() {
   const lv = document.getElementById("call-local-video")
   const rv = document.getElementById("call-remote-video")
   if (lv) lv.srcObject = null
-  if (rv) rv.srcObject = null
+  if (rv) { rv.srcObject = null; rv.classList.remove("has-stream") }
 }
 
 function startTimer() {
