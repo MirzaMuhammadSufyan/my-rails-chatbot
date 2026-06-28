@@ -1,4 +1,12 @@
-import { createConsumer } from "@rails/actioncable"
+/**
+ * WebRTC 1-on-1 Audio/Video calling.
+ *
+ * Signalling is routed through the existing ChatChannel subscription in chat.js
+ * via CustomEvents — no second WebSocket connection is ever opened.
+ *
+ *   Outgoing signal  → dispatch "call:send-signal"  → chat.js → ChatChannel#call_signal → server
+ *   Incoming signal  ← "call:incoming-signal" ← chat.js ← ChatChannel broadcast ← server
+ */
 
 const STUN = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -9,12 +17,10 @@ const STUN = [
 
 const S = { IDLE: "idle", CALLING: "calling", RINGING: "ringing", CONNECTED: "connected" }
 
-// ─── State ────────────────────────────────────────────────────────────────────
+// ─── Module state ─────────────────────────────────────────────────────────────
 let state = S.IDLE
 let localStream = null
-let pc = null          // RTCPeerConnection
-let callSub = null     // ActionCable subscription
-let roomId = null
+let pc = null
 let myName = null
 let peerName = null
 let audioOnly = false
@@ -23,42 +29,35 @@ let ringTimeout = null
 let callTimerInterval = null
 let ringtone = null
 
-const consumer = createConsumer()
+// ─── Init ─────────────────────────────────────────────────────────────────────
 
-// ─── Public init ──────────────────────────────────────────────────────────────
-
-export function initVideoCall(rid, userName) {
-  roomId = rid
+export function initVideoCall(_roomId, userName) {
   myName = userName
-  subscribeCallChannel()
+  listenForIncomingSignals()
   wireButtons()
   initDraggablePip()
 }
 
-// ─── ActionCable ──────────────────────────────────────────────────────────────
-
-function subscribeCallChannel() {
-  callSub = consumer.subscriptions.create(
-    { channel: "CallChannel", room_id: roomId },
-    { received: (data) => onSignal(data) }
-  )
-}
+// ─── Signal transport (via CustomEvents → chat.js → ChatChannel) ──────────────
 
 function send(payload) {
-  callSub?.perform("signal", { ...payload, from: myName })
+  document.dispatchEvent(new CustomEvent("call:send-signal", { detail: { ...payload, from: myName } }))
 }
 
-// ─── Signal router ────────────────────────────────────────────────────────────
+function listenForIncomingSignals() {
+  document.addEventListener("call:incoming-signal", (e) => {
+    const data = e.detail
+    if (data.from === myName) return  // ignore own echo
 
-async function onSignal(data) {
-  if (data.from === myName) return
-
-  if (data.type === "call-offer")     return onOffer(data)
-  if (data.type === "call-answer")    return onAnswer(data)
-  if (data.type === "ice-candidate")  return onIce(data)
-  if (data.type === "call-rejected")  return onRejected(data)
-  if (data.type === "call-ended")     return onEnded(data)
-  if (data.type === "call-busy")      return onBusy(data)
+    switch (data.type) {
+      case "call-offer":    return onOffer(data)
+      case "call-answer":   return onAnswer(data)
+      case "ice-candidate": return onIce(data)
+      case "call-rejected": return onRejected(data)
+      case "call-ended":    return onEnded(data)
+      case "call-busy":     return onBusy(data)
+    }
+  })
 }
 
 // ─── Initiate call ────────────────────────────────────────────────────────────
@@ -66,12 +65,14 @@ async function onSignal(data) {
 async function startCall(withVideo) {
   if (state !== S.IDLE) return
   audioOnly = !withVideo
+
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo })
   } catch {
     toast("Camera/microphone access denied.")
     return
   }
+
   setState(S.CALLING)
   showOverlay()
   attachLocal(localStream)
@@ -79,6 +80,7 @@ async function startCall(withVideo) {
 
   pc = createPc()
   localStream.getTracks().forEach((t) => pc.addTrack(t, localStream))
+
   const offer = await pc.createOffer()
   await pc.setLocalDescription(offer)
   send({ type: "call-offer", offer: pc.localDescription, audioOnly })
@@ -88,7 +90,7 @@ async function startCall(withVideo) {
   }, 40000)
 }
 
-// ─── Answer call ──────────────────────────────────────────────────────────────
+// ─── Answer ───────────────────────────────────────────────────────────────────
 
 async function answerCall(withVideo) {
   const ring = document.getElementById("call-incoming-ring")
@@ -104,7 +106,7 @@ async function answerCall(withVideo) {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo })
   } catch {
-    toast("Microphone access denied.")
+    toast("Microphone/camera access denied.")
     send({ type: "call-rejected" })
     setState(S.IDLE)
     return
@@ -126,7 +128,7 @@ async function answerCall(withVideo) {
   send({ type: "call-answer", answer: pc.localDescription })
 }
 
-// ─── Reject call ──────────────────────────────────────────────────────────────
+// ─── Reject ───────────────────────────────────────────────────────────────────
 
 function rejectCall() {
   clearTimeout(ringTimeout)
@@ -149,7 +151,7 @@ function hangup(silent = false) {
   setState(S.IDLE)
 }
 
-// ─── PeerConnection factory ───────────────────────────────────────────────────
+// ─── RTCPeerConnection ────────────────────────────────────────────────────────
 
 function createPc() {
   const conn = new RTCPeerConnection({ iceServers: STUN })
@@ -186,6 +188,7 @@ async function onOffer(data) {
   if (state !== S.IDLE) { send({ type: "call-busy" }); return }
   peerName = data.from
   setState(S.RINGING)
+
   const ring = document.getElementById("call-incoming-ring")
   if (ring) {
     ring.dataset.offer = JSON.stringify(data.offer)
@@ -195,9 +198,12 @@ async function onOffer(data) {
     if (typeEl) typeEl.textContent = data.audioOnly ? "Audio call" : "Video call"
     ring.removeAttribute("hidden")
   }
+
   playRingtone(false)
   ringTimeout = setTimeout(() => {
-    if (state === S.RINGING) { stopRingtone(); hideRing(); setState(S.IDLE); pendingCandidates = [] }
+    if (state === S.RINGING) {
+      stopRingtone(); hideRing(); setState(S.IDLE); pendingCandidates = []
+    }
   }, 40000)
 }
 
@@ -220,7 +226,7 @@ async function onIce(data) {
 function onRejected(data) {
   clearTimeout(ringTimeout)
   stopRingtone()
-  toast(`${data.from || "User"} declined.`)
+  toast(`${data.from || "User"} declined the call.`)
   closeOverlay()
   cleanup()
   setState(S.IDLE)
@@ -240,7 +246,7 @@ function onEnded() {
 function onBusy() {
   clearTimeout(ringTimeout)
   stopRingtone()
-  toast("User is busy.")
+  toast("User is busy on another call.")
   closeOverlay()
   cleanup()
   setState(S.IDLE)
@@ -256,7 +262,8 @@ function toggleMute() {
   if (btn) {
     btn.classList.toggle("is-active", !track.enabled)
     btn.setAttribute("aria-label", track.enabled ? "Mute" : "Unmute")
-    btn.querySelector(".call-ctrl-label").textContent = track.enabled ? "Mute" : "Unmuted"
+    const lbl = btn.querySelector(".call-ctrl-label")
+    if (lbl) lbl.textContent = track.enabled ? "Mute" : "Unmuted"
   }
 }
 
@@ -267,12 +274,11 @@ function toggleCamera() {
   const btn = document.getElementById("call-cam-btn")
   if (btn) {
     btn.classList.toggle("is-active", !track.enabled)
-    btn.setAttribute("aria-label", track.enabled ? "Turn off camera" : "Turn on camera")
-    btn.querySelector(".call-ctrl-label").textContent = track.enabled ? "Camera" : "Cam Off"
+    const lbl = btn.querySelector(".call-ctrl-label")
+    if (lbl) lbl.textContent = track.enabled ? "Camera" : "Cam Off"
   }
-  // toggle avatar placeholder
-  const localVid = document.getElementById("call-local-video")
-  if (localVid) localVid.classList.toggle("cam-off", !track.enabled)
+  const lv = document.getElementById("call-local-video")
+  if (lv) lv.classList.toggle("cam-off", !track.enabled)
 }
 
 function toggleSpeaker() {
@@ -283,7 +289,7 @@ function toggleSpeaker() {
   if (btn) btn.classList.toggle("is-active", rv.muted)
 }
 
-// ─── UI helpers ──────────────────────────────────────────────────────────────
+// ─── UI ───────────────────────────────────────────────────────────────────────
 
 function setState(s) {
   state = s
@@ -316,10 +322,8 @@ function attachLocal(stream) {
 }
 
 function cleanup() {
-  pc?.close()
-  pc = null
-  localStream?.getTracks().forEach((t) => t.stop())
-  localStream = null
+  pc?.close(); pc = null
+  localStream?.getTracks().forEach((t) => t.stop()); localStream = null
   pendingCandidates = []
   peerName = null
   stopTimer()
@@ -340,8 +344,7 @@ function startTimer() {
 }
 
 function stopTimer() {
-  clearInterval(callTimerInterval)
-  callTimerInterval = null
+  clearInterval(callTimerInterval); callTimerInterval = null
   const el = document.getElementById("call-timer")
   if (el) el.textContent = ""
 }
@@ -360,14 +363,14 @@ function toast(msg) {
   el._t = setTimeout(() => el.setAttribute("hidden", ""), 3500)
 }
 
-// ─── Ringtone (Web Audio) ────────────────────────────────────────────────────
+// ─── Ringtone ─────────────────────────────────────────────────────────────────
 
 function playRingtone(outgoing) {
   stopRingtone()
   try {
     const ctx = new AudioContext()
     const gain = ctx.createGain()
-    gain.gain.value = 0.25
+    gain.gain.value = 0.22
     gain.connect(ctx.destination)
     const beep = (freq, start, dur) => {
       const o = ctx.createOscillator()
@@ -379,7 +382,7 @@ function playRingtone(outgoing) {
       : () => { [0, 0.25, 0.5].forEach((d) => beep(660, d, 0.18)) }
     pattern()
     ringtone = { iv: setInterval(pattern, outgoing ? 2200 : 2800), ctx }
-  } catch { /* skip */ }
+  } catch { /* audio context unavailable */ }
 }
 
 function stopRingtone() {
@@ -395,6 +398,7 @@ function initDraggablePip() {
   const pip = document.getElementById("call-local-pip")
   if (!pip) return
   let drag = false, sx, sy, ix, iy
+
   const start = (e) => {
     drag = true
     const p = e.touches ? e.touches[0] : e
@@ -406,12 +410,13 @@ function initDraggablePip() {
   const move = (e) => {
     if (!drag) return
     const p = e.touches ? e.touches[0] : e
-    const nx = Math.max(8, Math.min(window.innerWidth - pip.offsetWidth - 8, ix + p.clientX - sx))
+    const nx = Math.max(8, Math.min(window.innerWidth  - pip.offsetWidth  - 8, ix + p.clientX - sx))
     const ny = Math.max(8, Math.min(window.innerHeight - pip.offsetHeight - 8, iy + p.clientY - sy))
     pip.style.left = `${nx}px`; pip.style.top = `${ny}px`
     pip.style.right = "auto"; pip.style.bottom = "auto"
   }
   const end = () => { drag = false; pip.style.transition = "" }
+
   pip.addEventListener("mousedown", start)
   pip.addEventListener("touchstart", start, { passive: true })
   document.addEventListener("mousemove", move)
@@ -427,15 +432,15 @@ function wireButtons() {
     const btn = e.target.closest("[data-call-action]")
     if (!btn) return
     switch (btn.dataset.callAction) {
-      case "start-video":   startCall(true);    break
-      case "start-audio":   startCall(false);   break
-      case "answer-video":  answerCall(true);   break
-      case "answer-audio":  answerCall(false);  break
-      case "reject":        rejectCall();       break
-      case "hangup":        hangup();           break
-      case "mute":          toggleMute();       break
-      case "camera":        toggleCamera();     break
-      case "speaker":       toggleSpeaker();    break
+      case "start-video":   startCall(true);   break
+      case "start-audio":   startCall(false);  break
+      case "answer-video":  answerCall(true);  break
+      case "answer-audio":  answerCall(false); break
+      case "reject":        rejectCall();      break
+      case "hangup":        hangup();          break
+      case "mute":          toggleMute();      break
+      case "camera":        toggleCamera();    break
+      case "speaker":       toggleSpeaker();   break
     }
   })
 }

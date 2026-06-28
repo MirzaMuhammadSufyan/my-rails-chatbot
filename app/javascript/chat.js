@@ -1,4 +1,4 @@
-import { createConsumer } from "@rails/actioncable"
+import { consumer } from "cable_consumer"
 import { initMediaViewer, enhanceMessageElement, stripMessageMedia } from "media_viewer"
 import { EMOJIS, applyEmojiShortcutsToText, getEmojiShortcutMatches } from "emojis"
 
@@ -70,8 +70,7 @@ export function initChat(roomId) {
     initEnterToSend(textarea, form)
   }
 
-  const consumer = createConsumer()
-  consumer.subscriptions.create(
+  const chatSub = consumer.subscriptions.create(
     { channel: "ChatChannel", room_id: roomId },
     {
       connected() {
@@ -85,6 +84,11 @@ export function initChat(roomId) {
         console.error("ChatChannel subscription rejected")
       },
       received(data) {
+        // WebRTC call signals ride the same channel — forward via DOM event
+        if (data.call_signal) {
+          document.dispatchEvent(new CustomEvent("call:incoming-signal", { detail: data }))
+          return
+        }
         if (data.clear_all) {
           messagesEl.innerHTML = '<div class="chat-empty"><div class="chat-empty-icon" aria-hidden="true">💬</div><p class="chat-empty-title">Chat cleared</p><p class="chat-empty-text">Start a new conversation!</p></div>'
           return
@@ -98,6 +102,11 @@ export function initChat(roomId) {
       }
     }
   )
+
+  // Forward outgoing call signals from video_call_controller through this subscription
+  document.addEventListener("call:send-signal", (e) => {
+    chatSub.perform("call_signal", e.detail)
+  })
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault()
