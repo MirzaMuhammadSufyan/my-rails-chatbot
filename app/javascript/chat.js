@@ -106,14 +106,48 @@ export function initChat(roomId) {
     }
   )
 
+  function getCsrfToken() {
+    return document.querySelector("meta[name='csrf-token']")?.getAttribute("content") || ""
+  }
+
+  async function sendCallSignalFallback(payload) {
+    try {
+      const response = await fetch("/api/calls/signal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrfToken()
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({ ...payload, room_id: roomId })
+      })
+      if (!response.ok) {
+        console.error('[Chat] REST fallback failed', response.status, await response.text())
+      } else {
+        console.debug('[Chat] REST fallback sent call_signal', payload)
+      }
+    } catch (error) {
+      console.error('[Chat] REST fallback error', error)
+    }
+  }
+
+  function sendCallSignal(payload) {
+    console.debug('[Chat] sending call_signal', payload)
+    if (chatSub?.perform && chatSub.consumer?.connection?.isOpen?.()) {
+      try {
+        chatSub.perform("call_signal", payload)
+        return
+      } catch (err) {
+        console.error('[Chat] failed to perform call_signal', err)
+      }
+    }
+    console.warn('[Chat] ActionCable closed or unavailable, using REST fallback')
+    sendCallSignalFallback(payload)
+  }
+
   // Forward outgoing call signals from video_call_controller through this subscription
   document.addEventListener("call:send-signal", (e) => {
-    console.debug('[Chat] sending call_signal', e.detail)
-    try {
-      chatSub.perform("call_signal", e.detail)
-    } catch (err) {
-      console.error('[Chat] failed to perform call_signal', err)
-    }
+    sendCallSignal(e.detail)
   })
 
   form.addEventListener("submit", async (event) => {
