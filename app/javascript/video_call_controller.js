@@ -28,6 +28,9 @@ let pendingCandidates = []
 let ringTimeout = null
 let callTimerInterval = null
 let ringtone = null
+let selectedVideoDeviceId = null
+let videoDevices = []
+let isVideoCall = false
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -60,14 +63,85 @@ function listenForIncomingSignals() {
   })
 }
 
+async function updateVideoDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    videoDevices = []
+    selectedVideoDeviceId = null
+    return
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices()
+  videoDevices = devices.filter((device) => device.kind === "videoinput")
+  if (!selectedVideoDeviceId && videoDevices.length > 0) {
+    selectedVideoDeviceId = videoDevices[0].deviceId
+  }
+}
+
+async function getMediaStream({ audio = true, video = false, deviceId = null }) {
+  const constraints = {
+    audio: audio ? { echoCancellation: true, noiseSuppression: true } : false,
+    video: false
+  }
+
+  if (video) {
+    constraints.video = deviceId
+      ? { deviceId: { exact: deviceId } }
+      : { facingMode: { ideal: "user" } }
+  }
+
+  return navigator.mediaDevices.getUserMedia(constraints)
+}
+
+async function switchCamera() {
+  if (videoDevices.length < 2) {
+    await updateVideoDevices()
+    if (videoDevices.length < 2) {
+      toast("No other camera available.")
+      return
+    }
+  }
+
+  const currentIndex = videoDevices.findIndex((d) => d.deviceId === selectedVideoDeviceId)
+  const nextIndex = (currentIndex + 1) % videoDevices.length
+  selectedVideoDeviceId = videoDevices[nextIndex].deviceId
+
+  try {
+    const videoOnlyStream = await getMediaStream({ audio: false, video: true, deviceId: selectedVideoDeviceId })
+    const newVideoTrack = videoOnlyStream.getVideoTracks()[0]
+    const oldVideoTrack = localStream?.getVideoTracks()[0]
+
+    if (oldVideoTrack) {
+      localStream.removeTrack(oldVideoTrack)
+      oldVideoTrack.stop()
+    }
+
+    localStream?.addTrack(newVideoTrack)
+
+    const sender = pc?.getSenders().find((s) => s.track?.kind === "video")
+    if (sender) {
+      await sender.replaceTrack(newVideoTrack)
+    } else if (pc && localStream) {
+      pc.addTrack(newVideoTrack, localStream)
+    }
+
+    attachLocal(localStream)
+    toast(`Switched camera to ${videoDevices[nextIndex].label || "next camera"}`)
+  } catch (error) {
+    console.error("[Call] switchCamera error", error)
+    toast("Could not switch camera.")
+  }
+}
+
 // ─── Initiate call ────────────────────────────────────────────────────────────
 
 async function startCall(withVideo) {
   if (state !== S.IDLE) return
   audioOnly = !withVideo
+  isVideoCall = withVideo
 
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo })
+    await updateVideoDevices()
+    localStream = await getMediaStream({ audio: true, video: withVideo, deviceId: selectedVideoDeviceId })
   } catch {
     toast("Camera/microphone access denied.")
     return
@@ -102,9 +176,11 @@ async function answerCall(withVideo) {
   stopRingtone()
   hideRing()
   audioOnly = !withVideo
+  isVideoCall = withVideo
 
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo })
+    await updateVideoDevices()
+    localStream = await getMediaStream({ audio: true, video: withVideo, deviceId: selectedVideoDeviceId })
   } catch {
     toast("Microphone/camera access denied.")
     send({ type: "call-rejected" })
@@ -290,6 +366,14 @@ function toggleCamera() {
   if (lv) lv.classList.toggle("cam-off", !track.enabled)
 }
 
+function switchCameraAction() {
+  if (!isVideoCall) {
+    toast("Switch camera only works during a video call.")
+    return
+  }
+  switchCamera()
+}
+
 function toggleSpeaker() {
   const rv = document.getElementById("call-remote-video")
   if (!rv) return
@@ -448,8 +532,9 @@ function wireButtons() {
       case "reject":        rejectCall();      break
       case "hangup":        hangup();          break
       case "mute":          toggleMute();      break
-      case "camera":        toggleCamera();    break
-      case "speaker":       toggleSpeaker();   break
+      case "camera":        toggleCamera();           break
+      case "switch-camera": switchCameraAction();    break
+      case "speaker":       toggleSpeaker();          break
     }
   })
 }
