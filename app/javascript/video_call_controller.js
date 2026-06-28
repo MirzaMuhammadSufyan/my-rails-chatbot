@@ -43,6 +43,7 @@ export function initVideoCall(rid, userName) {
   subscribeCallChannel()
   wireButtons()
   initDraggablePip()
+  initCallChat()
 }
 
 // ─── Signal transport (CallChannel) ──────────────────────────────────────────
@@ -420,6 +421,106 @@ function toggleSpeaker() {
   if (btn) btn.classList.toggle("is-active", rv.muted)
 }
 
+function toggleFullscreen() {
+  const overlay = document.getElementById("call-overlay")
+  if (!overlay) return
+  const isFs = !!document.fullscreenElement
+  if (isFs) {
+    document.exitFullscreen().catch(() => {})
+  } else {
+    overlay.requestFullscreen().catch(() => {})
+  }
+}
+
+function onFullscreenChange() {
+  const btn = document.getElementById("call-fullscreen-btn")
+  if (!btn) return
+  const isFs = !!document.fullscreenElement
+  btn.querySelector(".icon-expand")?.toggleAttribute("hidden", isFs)
+  btn.querySelector(".icon-compress")?.toggleAttribute("hidden", !isFs)
+  btn.setAttribute("aria-label", isFs ? "Exit full screen" : "Full screen")
+}
+
+// ─── In-call chat ─────────────────────────────────────────────────────────────
+
+let chatUnread = 0
+
+function toggleChat() {
+  const panel = document.getElementById("call-chat-panel")
+  if (!panel) return
+  const open = !panel.hidden
+  panel.hidden = open
+  const btn = document.getElementById("call-chat-btn")
+  if (btn) btn.classList.toggle("is-active", !open)
+  if (!open) {
+    chatUnread = 0
+    const badge = btn?.querySelector(".call-chat-btn-badge")
+    if (badge) badge.classList.remove("has-unread")
+    document.getElementById("call-chat-input")?.focus()
+  }
+}
+
+function closeChat() {
+  const panel = document.getElementById("call-chat-panel")
+  if (panel) panel.hidden = true
+  document.getElementById("call-chat-btn")?.classList.remove("is-active")
+}
+
+function appendChatMessage(senderName, text, own) {
+  const list = document.getElementById("call-chat-messages")
+  if (!list) return
+  const msg = document.createElement("div")
+  msg.className = `call-chat-msg${own ? " call-chat-msg--own" : ""}`
+  msg.innerHTML = `<div class="call-chat-msg-name">${escapeHtml(senderName)}</div><div class="call-chat-msg-bubble">${escapeHtml(text)}</div>`
+  list.appendChild(msg)
+  list.scrollTop = list.scrollHeight
+
+  const panel = document.getElementById("call-chat-panel")
+  if (panel?.hidden) {
+    chatUnread++
+    const badge = document.getElementById("call-chat-btn")?.querySelector(".call-chat-btn-badge")
+    if (badge) badge.classList.add("has-unread")
+  }
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
+function initCallChat() {
+  const form = document.getElementById("call-chat-form")
+  if (!form) return
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault()
+    const input = document.getElementById("call-chat-input")
+    const text = input?.value.trim()
+    if (!text) return
+    input.value = ""
+
+    const messagesEl = document.querySelector("[data-chat-room]")
+    const rid = messagesEl?.dataset.roomId
+    if (!rid) return
+
+    const token = document.querySelector("meta[name='csrf-token']")?.content
+    try {
+      await fetch(`/rooms/${rid}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": token },
+        credentials: "same-origin",
+        body: JSON.stringify({ message: { body: text } })
+      })
+    } catch { /* ignore send errors */ }
+  })
+
+  // Listen for messages broadcast from ChatChannel (dispatched by chat.js)
+  document.addEventListener("call:chat-message", (e) => {
+    const { sender, text, own } = e.detail
+    appendChatMessage(sender, text, own)
+  })
+
+  document.addEventListener("fullscreenchange", onFullscreenChange)
+}
+
 // ─── UI ───────────────────────────────────────────────────────────────────────
 
 function setState(s) {
@@ -441,6 +542,8 @@ function showOverlay() {
 
 function closeOverlay() {
   document.getElementById("call-overlay")?.setAttribute("hidden", "")
+  closeChat()
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
 }
 
 function hideRing() {
@@ -577,10 +680,13 @@ function wireButtons() {
       case "answer-audio":  answerCall(false); break
       case "reject":        rejectCall();      break
       case "hangup":        hangup();          break
-      case "mute":          toggleMute();      break
-      case "camera":        toggleCamera();           break
-      case "switch-camera": switchCameraAction();    break
-      case "speaker":       toggleSpeaker();          break
+      case "mute":          toggleMute();         break
+      case "camera":        toggleCamera();       break
+      case "switch-camera": switchCameraAction(); break
+      case "speaker":       toggleSpeaker();      break
+      case "fullscreen":    toggleFullscreen();   break
+      case "chat":          toggleChat();         break
+      case "close-chat":    closeChat();          break
     }
   })
 }

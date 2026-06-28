@@ -86,6 +86,12 @@ export function initChat(roomId) {
         setConnectionStatus(false)
       },
       received(data) {
+        if (data.chat_message) {
+          const currentUser = document.querySelector("[data-current-user]")?.dataset.currentUser
+          document.dispatchEvent(new CustomEvent("call:chat-message", {
+            detail: { ...data.chat_message, own: data.chat_message.sender === currentUser }
+          }))
+        }
         if (data.clear_all) {
           messagesEl.innerHTML = '<div class="chat-empty"><div class="chat-empty-icon" aria-hidden="true">💬</div><p class="chat-empty-title">Chat cleared</p><p class="chat-empty-text">Start a new conversation!</p></div>'
           return

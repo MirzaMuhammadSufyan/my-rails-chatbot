@@ -95,6 +95,6 @@ class Message < ApplicationRecord
   end
 
   def broadcast_append
-    ChatChannel.broadcast_to(room, html: broadcast_html)
+    ChatChannel.broadcast_to(room, html: broadcast_html, chat_message: { sender: user_name.to_s, text: body.to_s, own: false })
   end
 end
