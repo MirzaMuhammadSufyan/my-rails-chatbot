@@ -1,6 +1,4 @@
-class DebugController < ApplicationController
-  skip_before_action :require_user_name, if: -> { action_name == "cable_status" }
-
+class DebugController < ActionController::Base
   def cable_status
     # Check Solid Cable message queue via direct SQL query
     cable_message_count = begin
