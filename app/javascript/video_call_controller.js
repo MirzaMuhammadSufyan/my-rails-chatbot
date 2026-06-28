@@ -196,7 +196,16 @@ async function onOffer(data) {
     if (callerEl) callerEl.textContent = data.from
     const typeEl = ring.querySelector(".call-ring-type")
     if (typeEl) typeEl.textContent = data.audioOnly ? "Audio call" : "Video call"
+    ring.style.zIndex = "99999"
     ring.removeAttribute("hidden")
+    setTimeout(() => {
+      if (ring.hidden) {
+        alert(`Incoming call from ${data.from}`)
+      }
+    }, 100)
+  } else {
+    console.warn('[Call] incoming offer but ring element not found')
+    alert(`Incoming call from ${data.from}`)
   }
 
   playRingtone(false)
