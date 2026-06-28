@@ -31,6 +31,7 @@ let ringtone = null
 let selectedVideoDeviceId = null
 let videoDevices = []
 let isVideoCall = false
+let incomingOfferHasVideo = false
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -141,7 +142,9 @@ async function startCall(withVideo) {
 
   try {
     await updateVideoDevices()
+    console.debug('[Call] available video devices', videoDevices)
     localStream = await getMediaStream({ audio: true, video: withVideo, deviceId: selectedVideoDeviceId })
+    console.debug('[Call] local stream tracks', localStream.getTracks().map((t) => ({ kind: t.kind, enabled: t.enabled })))
   } catch {
     toast("Camera/microphone access denied.")
     return
@@ -157,7 +160,7 @@ async function startCall(withVideo) {
 
   const offer = await pc.createOffer()
   await pc.setLocalDescription(offer)
-  send({ type: "call-offer", offer: pc.localDescription, audioOnly })
+  send({ type: "call-offer", offer: pc.localDescription, audioOnly, video: withVideo })
 
   ringTimeout = setTimeout(() => {
     if (state === S.CALLING) { toast("No answer."); hangup(true) }
@@ -180,7 +183,9 @@ async function answerCall(withVideo) {
 
   try {
     await updateVideoDevices()
+    console.debug('[Call] available video devices', videoDevices)
     localStream = await getMediaStream({ audio: true, video: withVideo, deviceId: selectedVideoDeviceId })
+    console.debug('[Call] local answer stream tracks', localStream.getTracks().map((t) => ({ kind: t.kind, enabled: t.enabled })))
   } catch {
     toast("Microphone/camera access denied.")
     send({ type: "call-rejected" })
@@ -193,6 +198,9 @@ async function answerCall(withVideo) {
   attachLocal(localStream)
 
   pc = createPc()
+  if (!withVideo && incomingOfferHasVideo) {
+    pc.addTransceiver("video", { direction: "recvonly" })
+  }
   localStream.getTracks().forEach((t) => pc.addTrack(t, localStream))
 
   await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(offerRaw)))
@@ -201,7 +209,7 @@ async function answerCall(withVideo) {
 
   const answer = await pc.createAnswer()
   await pc.setLocalDescription(answer)
-  send({ type: "call-answer", answer: pc.localDescription })
+  send({ type: "call-answer", answer: pc.localDescription, audioOnly, video: withVideo })
 }
 
 // ─── Reject ───────────────────────────────────────────────────────────────────
@@ -250,9 +258,16 @@ function createPc() {
   }
 
   conn.ontrack = (e) => {
+    console.debug('[Call] ontrack', e)
     const stream = e.streams[0] || new MediaStream([e.track])
     const rv = document.getElementById("call-remote-video")
-    if (rv) { rv.srcObject = stream; rv.play().catch(() => {}) }
+    if (rv) {
+      rv.srcObject = stream
+      rv.play().catch((err) => console.warn('[Call] remote video play failed', err))
+    }
+    if (state !== S.CONNECTED) {
+      setState(S.CONNECTED)
+    }
   }
 
   return conn
@@ -263,6 +278,7 @@ function createPc() {
 async function onOffer(data) {
   if (state !== S.IDLE) { send({ type: "call-busy" }); return }
   peerName = data.from
+  incomingOfferHasVideo = Boolean(data.video)
   setState(S.RINGING)
 
   const ring = document.getElementById("call-incoming-ring")
@@ -283,6 +299,7 @@ async function onOffer(data) {
     console.warn('[Call] incoming offer but ring element not found')
     alert(`Incoming call from ${data.from}`)
   }
+  console.debug('[Call] onOffer audioOnly=', data.audioOnly, 'video=', data.video)
 
   playRingtone(false)
   ringTimeout = setTimeout(() => {
@@ -411,7 +428,12 @@ function hideRing() {
 
 function attachLocal(stream) {
   const v = document.getElementById("call-local-video")
-  if (v) { v.srcObject = stream; v.muted = true; v.play().catch(() => {}) }
+  if (v) {
+    v.srcObject = stream
+    v.muted = true
+    v.play().catch((err) => console.warn('[Call] local video play failed', err))
+  }
+  console.debug('[Call] attachLocal tracks', stream?.getTracks().map((t) => ({ kind: t.kind, enabled: t.enabled })))
 }
 
 function cleanup() {
@@ -419,6 +441,7 @@ function cleanup() {
   localStream?.getTracks().forEach((t) => t.stop()); localStream = null
   pendingCandidates = []
   peerName = null
+  incomingOfferHasVideo = false
   stopTimer()
   const lv = document.getElementById("call-local-video")
   const rv = document.getElementById("call-remote-video")

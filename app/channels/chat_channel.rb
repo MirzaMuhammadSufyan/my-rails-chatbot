@@ -26,12 +26,12 @@ class ChatChannel < ApplicationCable::Channel
     }
 
     # forward offer / answer / ICE candidate payloads as-is
-    %w[offer answer candidate audioOnly].each do |key|
+    %w[offer answer candidate audioOnly video].each do |key|
       payload[key] = data[key] if data.key?(key)
     end
 
     ChatChannel.broadcast_to(@room, payload)
-    Rails.logger.info("[ChatChannel#call_signal] broadcast to room=#{@room.id} type=#{payload['type']}")
+    Rails.logger.info("[ChatChannel#call_signal] broadcast to room=#{@room.id} type=#{payload['type']} from=#{payload['from']} video=#{payload['video']}")
   rescue StandardError => e
     Rails.logger.error("[ChatChannel#call_signal] #{e.class}: #{e.message}")
   end
