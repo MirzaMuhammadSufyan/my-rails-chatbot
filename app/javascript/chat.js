@@ -62,6 +62,7 @@ export function initChat(roomId) {
   initGlobalComposeKeys(form, pendingPreview)
   initMessagePolling(roomId, messagesEl)
   initSwipeToReply(messagesEl)
+  initMessageMenus(messagesEl)
   initLongPressMultiSelect(messagesEl, roomId)
   initVideoRecording(form, composer)
   if (textarea) {
@@ -304,142 +305,245 @@ function initSwipeToReply(messagesEl) {
   messagesEl.addEventListener("touchcancel", endSwipe, { passive: true })
 }
 
+// ─── Per-message dropdown menu ────────────────────────────────────────────────
+
+function initMessageMenus(messagesEl) {
+  let openMenu = null
+
+  function closeOpenMenu() {
+    if (!openMenu) return
+    openMenu.setAttribute("hidden", "")
+    openMenu.closest(".msg")?.querySelector(".msg-menu-btn")?.setAttribute("aria-expanded", "false")
+    openMenu = null
+  }
+
+  // Delegate: open/close dropdown
+  messagesEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".msg-menu-btn")
+    if (btn) {
+      e.stopPropagation()
+      const article = btn.closest(".msg")
+      const menu = article?.querySelector(".msg-menu")
+      if (!menu) return
+
+      if (menu === openMenu) {
+        closeOpenMenu()
+        return
+      }
+      closeOpenMenu()
+      openMenu = menu
+
+      // Position: own messages — anchor right; others — anchor left
+      menu.classList.toggle("msg-menu--own", article.classList.contains("msg--own"))
+      menu.removeAttribute("hidden")
+      btn.setAttribute("aria-expanded", "true")
+      return
+    }
+
+    // Handle menu item clicks
+    const item = e.target.closest(".msg-menu-item[data-msg-action]")
+    if (item) {
+      e.stopPropagation()
+      const article = item.closest(".msg")
+      const action = item.dataset.msgAction
+      closeOpenMenu()
+
+      if (action === "reply" && article) {
+        openReplyFromArticle(article)
+      } else if (action === "select" && article) {
+        enterSelectModeFromMenu(article)
+      } else if (action === "delete") {
+        const url = item.dataset.deleteUrl
+        if (url) deleteMessage(url, article)
+      }
+      return
+    }
+
+    // Click outside closes menu
+    if (!e.target.closest(".msg-menu")) closeOpenMenu()
+  })
+
+  // Close on outside touch
+  document.addEventListener("click", (e) => {
+    if (!openMenu) return
+    if (!e.target.closest(".msg-menu") && !e.target.closest(".msg-menu-btn")) closeOpenMenu()
+  })
+}
+
+// Called from menu "Select" item — enters multi-select mode for that message
+function enterSelectModeFromMenu(article) {
+  activateSelectMode(article)
+}
+
+// Shared delete helper for menu — delegates to the .msg-delete button so
+// media_viewer.js handles stripping attachments + confirm dialog
+function deleteMessage(url, article) {
+  if (!article) return
+  // Find or synthesise the .msg-delete button so media_viewer's handler fires
+  let btn = article.querySelector(".msg-delete")
+  if (!btn) {
+    btn = document.createElement("button")
+    btn.className = "msg-delete"
+    btn.dataset.deleteUrl = url
+    btn.style.display = "none"
+    article.appendChild(btn)
+  }
+  btn.click()
+}
+
+// ─── Multi-select (long-press + menu) ────────────────────────────────────────
+
+// Module-level references so enterSelectModeFromMenu can reach them
+let _enterSelectMode = null
+let _exitSelectMode = null
+
+function activateSelectMode(article) {
+  _enterSelectMode?.(article)
+}
+
 function initLongPressMultiSelect(messagesEl, roomId) {
-  const bulkBar = document.getElementById("bulk-action-bar")
-  const bulkCount = document.getElementById("bulk-count")
+  const bulkBar    = document.getElementById("bulk-action-bar")
+  const bulkCount  = document.getElementById("bulk-count")
   const bulkCancel = document.getElementById("bulk-cancel")
   const bulkDelete = document.getElementById("bulk-delete")
-  const isAdmin = messagesEl.dataset.isAdmin === "true"
+  const isAdmin    = messagesEl.dataset.isAdmin === "true"
   const currentUser = messagesEl.dataset.currentUser
 
-  let longPressTimer = null
-  const LONG_PRESS_MS = 600
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   function getSelectedIds() {
     return [...messagesEl.querySelectorAll(".msg-checkbox:checked")].map((cb) => cb.value)
   }
 
-  function updateBulkBar() {
-    const count = getSelectedIds().length
-    if (bulkCount) bulkCount.textContent = `${count} selected`
-    if (count === 0 && isSelectMode) exitSelectMode()
+  function syncBulkBar() {
+    const n = getSelectedIds().length
+    if (bulkCount) bulkCount.textContent = `${n} selected`
+    if (n === 0 && isSelectMode) exitSelectMode()
   }
+
+  function canSelectArticle(article) {
+    return isAdmin ||
+      article.dataset.author === currentUser ||
+      article.dataset.canDelete === "true"
+  }
+
+  function checkArticle(article, checked) {
+    const cb = article.querySelector(".msg-checkbox")
+    if (!cb) return
+    cb.checked = checked
+    article.classList.toggle("msg--selected", checked)
+  }
+
+  // ── Enter / exit ───────────────────────────────────────────────────────────
 
   function enterSelectMode(article) {
-    if (isSelectMode) return
+    if (isSelectMode) {
+      // Already in select mode — toggle this article
+      if (canSelectArticle(article)) checkArticle(article, true)
+      syncBulkBar()
+      return
+    }
     isSelectMode = true
-    if (navigator.vibrate) navigator.vibrate(60)
+    if (navigator.vibrate) navigator.vibrate(55)
     messagesEl.classList.add("is-select-mode")
     bulkBar?.removeAttribute("hidden")
-    enableArticleSelect(article)
-  }
 
-  function enableArticleSelect(article) {
-    const label = article?.querySelector(".msg-select-check")
-    const checkbox = article?.querySelector(".msg-checkbox")
-    if (label) label.removeAttribute("hidden")
-    if (checkbox) {
-      checkbox.checked = true
-      article.classList.add("msg--selected")
-    }
-    updateBulkBar()
+    // Auto-select the triggering article
+    if (article && canSelectArticle(article)) checkArticle(article, true)
+    syncBulkBar()
   }
 
   function exitSelectMode() {
     isSelectMode = false
     messagesEl.classList.remove("is-select-mode")
     bulkBar?.setAttribute("hidden", "")
-    messagesEl.querySelectorAll(".msg-checkbox").forEach((cb) => {
-      cb.checked = false
-    })
+    messagesEl.querySelectorAll(".msg-checkbox").forEach((cb) => { cb.checked = false })
     messagesEl.querySelectorAll(".msg--selected").forEach((el) => el.classList.remove("msg--selected"))
-    messagesEl.querySelectorAll(".msg-select-check").forEach((el) => el.setAttribute("hidden", ""))
-    updateBulkBar()
+    syncBulkBar()
   }
 
-  // Show all select checkboxes in select mode
+  // Wire module-level references so the menu can call them
+  _enterSelectMode = enterSelectMode
+  _exitSelectMode  = exitSelectMode
+
+  // ── Toggle selection by clicking a message in select mode ──────────────────
+
   messagesEl.addEventListener("click", (e) => {
     if (!isSelectMode) return
+    if (e.target.closest(".msg-menu-btn, .msg-menu, .msg-media-trigger, a[href]")) return
     const article = e.target.closest(".msg")
-    if (!article) return
-    if (e.target.closest(".msg-select-check")) return  // handled by checkbox change
-
-    const author = article.dataset.author
-    const canDelete = article.dataset.canDelete === "true" || isAdmin || author === currentUser
-    if (!canDelete) return
-
-    const label = article.querySelector(".msg-select-check")
-    const checkbox = article.querySelector(".msg-checkbox")
-    if (!label || !checkbox) return
-    label.removeAttribute("hidden")
-    checkbox.checked = !checkbox.checked
-    article.classList.toggle("msg--selected", checkbox.checked)
-    updateBulkBar()
+    if (!article || !canSelectArticle(article)) return
+    const cb = article.querySelector(".msg-checkbox")
+    if (!cb) return
+    cb.checked = !cb.checked
+    article.classList.toggle("msg--selected", cb.checked)
+    syncBulkBar()
   })
 
-  messagesEl.addEventListener("change", (e) => {
-    if (!e.target.classList.contains("msg-checkbox")) return
-    const article = e.target.closest(".msg")
-    if (article) article.classList.toggle("msg--selected", e.target.checked)
-    updateBulkBar()
-  })
+  // ── Long-press detection ───────────────────────────────────────────────────
 
+  let lpTimer = null
+  let lpMoved = false
+
+  function lpStart(article) {
+    lpMoved = false
+    clearTimeout(lpTimer)
+    lpTimer = setTimeout(() => {
+      lpTimer = null
+      if (!lpMoved) enterSelectMode(article)
+    }, 600)
+  }
+
+  function lpCancel() {
+    clearTimeout(lpTimer)
+    lpTimer = null
+  }
+
+  // Touch
   messagesEl.addEventListener("touchstart", (e) => {
     if (isSelectMode) return
     const article = e.target.closest(".msg")
     if (!article) return
-    if (e.target.closest(REPLY_INTERACTIVE_SELECTOR)) return
-
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null
-      enterSelectMode(article)
-    }, LONG_PRESS_MS)
+    if (e.target.closest(".msg-menu-btn, .msg-menu, .msg-media-trigger, .msg-reply, .msg-delete, a[href]")) return
+    lpStart(article)
   }, { passive: true })
 
-  messagesEl.addEventListener("touchend", () => {
-    clearTimeout(longPressTimer)
-    longPressTimer = null
-  }, { passive: true })
+  messagesEl.addEventListener("touchmove",   () => { lpMoved = true; lpCancel() }, { passive: true })
+  messagesEl.addEventListener("touchend",    lpCancel, { passive: true })
+  messagesEl.addEventListener("touchcancel", lpCancel, { passive: true })
 
-  messagesEl.addEventListener("touchmove", () => {
-    clearTimeout(longPressTimer)
-    longPressTimer = null
-  }, { passive: true })
-
-  // Also allow long press on desktop via mousedown/mouseup
+  // Mouse (desktop)
   messagesEl.addEventListener("mousedown", (e) => {
     if (isSelectMode) return
+    if (e.button !== 0) return
     const article = e.target.closest(".msg")
     if (!article) return
-    if (e.target.closest(REPLY_INTERACTIVE_SELECTOR)) return
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null
-      enterSelectMode(article)
-    }, LONG_PRESS_MS)
+    if (e.target.closest(".msg-menu-btn, .msg-menu, .msg-media-trigger, .msg-reply, .msg-delete, a[href]")) return
+    lpStart(article)
   })
 
-  messagesEl.addEventListener("mouseup", () => {
-    clearTimeout(longPressTimer)
-    longPressTimer = null
-  })
+  document.addEventListener("mouseup",   lpCancel)
+  document.addEventListener("mousemove", () => { if (lpTimer) { lpMoved = true; lpCancel() } })
+
+  // ── Bulk action bar buttons ────────────────────────────────────────────────
 
   bulkCancel?.addEventListener("click", exitSelectMode)
 
   bulkDelete?.addEventListener("click", async () => {
     const ids = getSelectedIds()
     if (!ids.length) return
-    const bulkUrl = bulkDelete.dataset.bulkUrl
+    const url  = bulkDelete.dataset.bulkUrl
     const token = document.querySelector('meta[name="csrf-token"]')?.content
 
     try {
-      const response = await fetch(bulkUrl, {
+      const res = await fetch(url, {
         method: "DELETE",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": token, Accept: "application/json" },
         credentials: "same-origin",
         body: JSON.stringify({ ids: ids.join(",") })
       })
-      if (response.ok) {
-        const data = await response.json()
+      if (res.ok) {
+        const data = await res.json()
         data.deleted_ids?.forEach((id) => removeMessageById(messagesEl, id))
       }
     } catch (err) {
@@ -811,7 +915,7 @@ function initEmojiShortcuts(textarea) {
 }
 
 const REPLY_INTERACTIVE_SELECTOR =
-  ".msg-delete, .msg-media-trigger, .msg-voice-play, .msg-voice-scrub, .msg-file-card, .msg-reply-quote, a[href], input, textarea, select"
+  ".msg-delete, .msg-menu-btn, .msg-menu, .msg-media-trigger, .msg-voice-play, .msg-voice-scrub, .msg-file-card, .msg-reply-quote, a[href], input, textarea, select"
 
 function openReplyFromArticle(article) {
   const replyBar = document.getElementById("reply-bar")

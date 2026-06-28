@@ -2351,40 +2351,155 @@ body.pending-media-open {
 }
 
 /* ——————————————————————————————
-   Message select mode
+   Message dropdown menu
    —————————————————————————————— */
 
-.msg-select-check {
-  position: absolute;
-  left: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  cursor: pointer;
-}
-
+/* Give .msg a positioning context (without clobbering its block display) */
 .msg {
   position: relative;
 }
 
+/* ▾ dropdown trigger button */
+.msg-menu-btn {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.2rem;
+  width: 1.55rem;
+  height: 1.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text-2);
+  background: var(--bg-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  z-index: 3;
+}
+
+/* Own messages: button on left side */
+.msg--own .msg-menu-btn {
+  right: auto;
+  left: 0.2rem;
+}
+
+/* Show on hover (desktop) */
+.msg:hover .msg-menu-btn {
+  opacity: 1;
+}
+
+/* Always show on touch devices (no hover state) */
+@media (hover: none) {
+  .msg-menu-btn {
+    opacity: 0.55;
+  }
+}
+
+.msg-menu-btn:hover,
+.msg-menu-btn[aria-expanded="true"] {
+  opacity: 1 !important;
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+/* Dropdown panel */
+.msg-menu {
+  position: absolute;
+  top: 1.85rem;
+  right: 0.2rem;
+  z-index: 200;
+  min-width: 140px;
+  padding: 0.3rem 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+/* Own messages: panel aligned to left */
+.msg-menu.msg-menu--own {
+  right: auto;
+  left: 0.2rem;
+}
+
+.msg-menu[hidden] {
+  display: none;
+}
+
+.msg-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.85rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.msg-menu-item:hover,
+.msg-menu-item:focus-visible {
+  background: var(--glass);
+  outline: none;
+}
+
+.msg-menu-item--danger {
+  color: var(--danger);
+}
+
+.msg-menu-item--danger:hover {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+/* ——————————————————————————————
+   Multi-select mode
+   —————————————————————————————— */
+
+/* Checkbox label — hidden until select mode */
+.msg-select-label {
+  display: none;
+  position: absolute;
+  left: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Invisible native input */
 .msg-checkbox {
   position: absolute;
   opacity: 0;
   width: 0;
   height: 0;
+  pointer-events: none;
 }
 
-.msg-checkbox-visual {
+/* Visible circle */
+.msg-select-visual {
   display: block;
   width: 1.4rem;
   height: 1.4rem;
   border: 2px solid var(--glass-border);
   border-radius: 50%;
   background: var(--bg-card);
+  flex-shrink: 0;
   transition: background 0.15s, border-color 0.15s;
 }
 
-.msg-checkbox:checked + .msg-checkbox-visual {
+.msg-checkbox:checked ~ .msg-select-visual,
+.msg-select-label:has(.msg-checkbox:checked) .msg-select-visual {
   background: var(--accent);
   border-color: var(--accent);
   background-image: url("data:image/svg+xml,%3Csvg width='10' height='8' viewBox='0 0 10 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 4l3 3 5-6' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -2392,27 +2507,34 @@ body.pending-media-open {
   background-position: center;
 }
 
-.msg--selected .msg-body {
-  opacity: 0.75;
+/* In select mode: show checkboxes, hide dropdown buttons, indent messages */
+.is-select-mode .msg-select-label {
+  display: flex;
 }
 
-.msg--selected {
-  background: rgba(99, 102, 241, 0.08);
-  border-radius: var(--radius);
+.is-select-mode .msg-menu-btn {
+  display: none;
 }
 
 .is-select-mode .msg {
-  padding-left: 2.5rem;
+  padding-left: 2.75rem;
   cursor: pointer;
 }
 
 .is-select-mode .msg--own {
   padding-left: 0;
-  padding-right: 2.5rem;
+  padding-right: 2.75rem;
 }
 
-.is-select-mode .msg-side-tools {
-  display: none;
+.is-select-mode .msg--own .msg-select-label {
+  left: auto;
+  right: 0.5rem;
+}
+
+/* Selected highlight */
+.msg--selected {
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: var(--radius);
 }
 
 /* ——————————————————————————————
@@ -2449,13 +2571,7 @@ body.pending-media-open {
   flex-shrink: 0;
 }
 
-/* ——————————————————————————————
-   Swipe-to-reply visual feedback
-   —————————————————————————————— */
-
-.msg {
-  transition: transform 0.0s;
-}
+/* swipe-to-reply: no default transition on .msg (set dynamically by JS) */
 
 /* ——————————————————————————————
    Rooms list — lock icon for password-protected rooms

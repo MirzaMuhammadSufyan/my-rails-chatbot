@@ -1,16 +1,28 @@
 <% own = defined?(current_user_name) && current_user_name.present? && message.user_name == current_user_name %>
 <% is_admin = defined?(current_user_name) && current_user_name.to_s.strip.downcase == "admin" %>
+<% can_delete = own || is_admin %>
 <% initial = message.user_name.to_s.strip.first&.upcase || "?" %>
 <% hue = message.user_name.to_s.bytes.sum % 360 %>
 <% visual = message.media.attached? && message.content_type.in?(%w[image video]) %>
 <% audio_msg = message.media.attached? && message.content_type == "audio" %>
 <% media_url = message.media_proxy_path if message.media.attached? %>
 <% has_reply = message.reply_to.present? %>
+<% delete_url = room_message_path(message.room, message) if can_delete %>
 
-<article id="<%= dom_id(message) %>" class="msg<%= " msg--own" if own %><%= " msg--has-media" if message.media.attached? %><%= " msg--visual" if visual %>" data-message-id="<%= message.id %>" data-author="<%= message.user_name %>" data-reply-id="<%= message.id %>" data-reply-author="<%= message.user_name %>" data-reply-preview="<%= h(message.snippet) %>" data-can-delete="<%= own || is_admin %>">
-  <label class="msg-select-check" aria-label="Select message" hidden>
+<article id="<%= dom_id(message) %>"
+  class="msg<%= " msg--own" if own %><%= " msg--has-media" if message.media.attached? %><%= " msg--visual" if visual %>"
+  data-message-id="<%= message.id %>"
+  data-author="<%= message.user_name %>"
+  data-reply-id="<%= message.id %>"
+  data-reply-author="<%= message.user_name %>"
+  data-reply-preview="<%= h(message.snippet) %>"
+  data-can-delete="<%= can_delete %>"
+  data-delete-url="<%= delete_url %>">
+
+  <%# Select checkbox — only visible in multi-select mode %>
+  <label class="msg-select-label" aria-label="Select message">
     <input type="checkbox" class="msg-checkbox" value="<%= message.id %>">
-    <span class="msg-checkbox-visual" aria-hidden="true"></span>
+    <span class="msg-select-visual" aria-hidden="true"></span>
   </label>
 
   <div class="msg-body">
@@ -30,16 +42,14 @@
                 data-reply-id="<%= message.id %>"
                 data-reply-author="<%= message.user_name %>"
                 data-reply-preview="<%= h(message.snippet) %>"
-                aria-label="Reply"
-                title="Reply">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <polyline points="9 14 4 9 9 4"/>
-                  <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-                </svg>
+                aria-label="Reply" title="Reply">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
               </button>
-              <button type="button" class="msg-delete" data-delete-url="<%= room_message_path(message.room, message) %>" aria-label="Delete message" title="Delete">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-              </button>
+              <% if can_delete %>
+                <button type="button" class="msg-delete" data-delete-url="<%= delete_url %>" aria-label="Delete" title="Delete">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                </button>
+              <% end %>
             </div>
             <time class="msg-time" datetime="<%= message.created_at.iso8601 %>"><%= message.created_at.strftime("%H:%M") %></time>
           </div>
@@ -71,9 +81,7 @@
               </div>
             <% when "audio" %>
               <div class="msg-bubble msg-bubble--audio">
-                <% if has_reply %>
-                  <%= render "messages/reply_quote", message: message %>
-                <% end %>
+                <% if has_reply %><%= render "messages/reply_quote", message: message %><% end %>
                 <div class="msg-voice-player" data-audio-src="<%= media_url %>" data-audio-type="<%= message.media.content_type.presence || "audio/webm" %>">
                   <button type="button" class="msg-voice-play" aria-label="Play voice message">
                     <span class="msg-voice-icon msg-voice-icon--play" aria-hidden="true"></span>
@@ -89,9 +97,7 @@
               </div>
             <% when "file" %>
               <div class="msg-bubble msg-bubble--file">
-                <% if has_reply %>
-                  <%= render "messages/reply_quote", message: message %>
-                <% end %>
+                <% if has_reply %><%= render "messages/reply_quote", message: message %><% end %>
                 <a href="<%= media_url %>" class="msg-file-card" target="_blank" rel="noopener" download>
                   <span class="msg-file-icon" aria-hidden="true">📄</span>
                   <span class="msg-file-info">
@@ -130,15 +136,11 @@
                 data-reply-id="<%= message.id %>"
                 data-reply-author="<%= message.user_name %>"
                 data-reply-preview="<%= h(message.snippet) %>"
-                aria-label="Reply to <%= message.user_name %>"
-                title="Reply">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <polyline points="9 14 4 9 9 4"/>
-                  <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-                </svg>
+                aria-label="Reply to <%= message.user_name %>" title="Reply">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
               </button>
               <% if is_admin %>
-                <button type="button" class="msg-delete" data-delete-url="<%= room_message_path(message.room, message) %>" aria-label="Delete message" title="Delete (admin)">
+                <button type="button" class="msg-delete" data-delete-url="<%= delete_url %>" aria-label="Delete (admin)" title="Delete">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
                 </button>
               <% end %>
@@ -148,5 +150,27 @@
         <% end %>
       </div>
     </div>
+  </div>
+
+  <%# Dropdown arrow — always present, shows context menu %>
+  <button type="button" class="msg-menu-btn" aria-label="Message options" aria-haspopup="true" aria-expanded="false">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+
+  <div class="msg-menu" role="menu" hidden>
+    <button type="button" class="msg-menu-item" data-msg-action="reply" role="menuitem">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+      Reply
+    </button>
+    <button type="button" class="msg-menu-item" data-msg-action="select" role="menuitem">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+      Select
+    </button>
+    <% if can_delete %>
+      <button type="button" class="msg-menu-item msg-menu-item--danger" data-msg-action="delete" data-delete-url="<%= delete_url %>" role="menuitem">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+        Delete
+      </button>
+    <% end %>
   </div>
 </article>
