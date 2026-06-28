@@ -56,6 +56,28 @@
         <% end %>
 
         <div class="msg-bubble-group">
+          <%# Dropdown arrow — inside bubble, top-right corner %>
+          <button type="button" class="msg-menu-btn" aria-label="Message options" aria-haspopup="true" aria-expanded="false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+
+          <div class="msg-menu<%= " msg-menu--own" if own %>" role="menu" hidden>
+            <button type="button" class="msg-menu-item" data-msg-action="reply" role="menuitem">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+              Reply
+            </button>
+            <button type="button" class="msg-menu-item" data-msg-action="select" role="menuitem">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              Select
+            </button>
+            <% if can_delete %>
+              <button type="button" class="msg-menu-item msg-menu-item--danger" data-msg-action="delete" data-delete-url="<%= delete_url %>" role="menuitem">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                Delete
+              </button>
+            <% end %>
+          </div>
+
           <% if message.media.attached? %>
             <% case message.content_type %>
             <% when "image" %>
@@ -152,25 +174,4 @@
     </div>
   </div>
 
-  <%# Dropdown arrow — always present, shows context menu %>
-  <button type="button" class="msg-menu-btn" aria-label="Message options" aria-haspopup="true" aria-expanded="false">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-  </button>
-
-  <div class="msg-menu" role="menu" hidden>
-    <button type="button" class="msg-menu-item" data-msg-action="reply" role="menuitem">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
-      Reply
-    </button>
-    <button type="button" class="msg-menu-item" data-msg-action="select" role="menuitem">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-      Select
-    </button>
-    <% if can_delete %>
-      <button type="button" class="msg-menu-item msg-menu-item--danger" data-msg-action="delete" data-delete-url="<%= delete_url %>" role="menuitem">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-        Delete
-      </button>
-    <% end %>
-  </div>
 </article>

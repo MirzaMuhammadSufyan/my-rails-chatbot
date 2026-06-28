@@ -508,7 +508,7 @@ function initLongPressMultiSelect(messagesEl, roomId) {
     lpTimer = null
   }
 
-  // Touch
+  // Touch — non-passive so we can preventDefault after the timer fires
   messagesEl.addEventListener("touchstart", (e) => {
     if (isSelectMode) return
     const article = e.target.closest(".msg")
