@@ -23,4 +23,7 @@ Rails.application.routes.draw do
       post :signal, on: :collection
     end
   end
+
+  # Debug endpoint to inspect Solid Cable queue (remove in production)
+  get "/debug/cable-status", to: "debug#cable_status"
 end
