@@ -6,7 +6,7 @@ class MessagesController < ApplicationController
     @message = @room.messages.find_by(id: params[:id])
     return head :no_content unless @message
 
-    unless @message.user_name == cookies.encrypted[:user_name]
+    unless @message.user_name == cookies.encrypted[:user_name] || admin?
       head :forbidden
       return
     end
@@ -16,6 +16,24 @@ class MessagesController < ApplicationController
   rescue StandardError => e
     Rails.logger.error("[MessagesController#destroy] #{e.class}: #{e.message}")
     head :no_content
+  end
+
+  def bulk_destroy
+    ids = params[:ids].to_s.split(",").map(&:to_i).reject(&:zero?)
+    deleted_ids = []
+
+    ids.each do |id|
+      msg = @room.messages.find_by(id: id)
+      next unless msg
+      next unless msg.user_name == cookies.encrypted[:user_name] || admin?
+
+      msg.destroy!
+      deleted_ids << id
+    rescue StandardError => e
+      Rails.logger.error("[bulk_destroy] #{id}: #{e.message}")
+    end
+
+    render json: { deleted_ids: deleted_ids }
   end
 
   def sync
@@ -122,5 +140,9 @@ class MessagesController < ApplicationController
     return if cookies.encrypted[:user_name].present?
 
     redirect_to new_session_path
+  end
+
+  def admin?
+    cookies.encrypted[:user_name].to_s.strip.downcase == "admin"
   end
 end

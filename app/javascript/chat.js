@@ -23,6 +23,13 @@ let jumpBottomBadge = null
 const MIN_VOICE_BYTES = 500
 const MIN_RECORDING_SEC = 0.8
 
+let videoMediaRecorder = null
+let videoRecordedChunks = []
+let videoStream = null
+let videoTimerInterval = null
+let videoStartedAt = null
+let isSelectMode = false
+
 export function initChat(roomId) {
   const messagesEl = document.getElementById("messages")
   const form = document.getElementById("chat-form")
@@ -54,6 +61,9 @@ export function initChat(roomId) {
   initMediaInputs(form, pendingPreview)
   initGlobalComposeKeys(form, pendingPreview)
   initMessagePolling(roomId, messagesEl)
+  initSwipeToReply(messagesEl)
+  initLongPressMultiSelect(messagesEl, roomId)
+  initVideoRecording(form, composer)
   if (textarea) {
     initAutoGrow(textarea)
     initEnterToSend(textarea, form)
@@ -74,6 +84,10 @@ export function initChat(roomId) {
         console.error("ChatChannel subscription rejected")
       },
       received(data) {
+        if (data.clear_all) {
+          messagesEl.innerHTML = '<div class="chat-empty"><div class="chat-empty-icon" aria-hidden="true">💬</div><p class="chat-empty-title">Chat cleared</p><p class="chat-empty-text">Start a new conversation!</p></div>'
+          return
+        }
         if (data.delete_message_id) {
           removeMessageById(messagesEl, data.delete_message_id)
           return
@@ -126,6 +140,312 @@ export function initChat(roomId) {
 
   playPreviewBtn?.addEventListener("click", () => {
     togglePreviewPlayback(playPreviewBtn)
+  })
+
+}
+
+function initVideoRecording(form, composer) {
+  const recordVideoBtn = document.getElementById("record-video")
+  const videoRecordingUi = document.getElementById("video-recording-ui")
+  const stopVideoBtn = document.getElementById("stop-video")
+  const cancelVideoBtn = document.getElementById("video-cancel")
+  const videoPreviewEl = document.getElementById("video-preview-live")
+  const pendingPreview = document.getElementById("pending-media-overlay")
+
+  if (!recordVideoBtn || !videoRecordingUi) return
+
+  recordVideoBtn.addEventListener("click", async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      alert("Camera not supported in this browser.")
+      return
+    }
+    try {
+      videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      videoRecordedChunks = []
+
+      if (videoPreviewEl) {
+        videoPreviewEl.srcObject = videoStream
+      }
+
+      const mimeTypes = ["video/webm;codecs=vp9,opus", "video/webm", "video/mp4"]
+      const mimeType = mimeTypes.find((t) => MediaRecorder.isTypeSupported(t))
+      videoMediaRecorder = new MediaRecorder(videoStream, mimeType ? { mimeType } : undefined)
+      videoMediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) videoRecordedChunks.push(e.data)
+      }
+      videoMediaRecorder.start(500)
+
+      videoStartedAt = Date.now()
+      videoTimerInterval = setInterval(() => {
+        const elapsed = (Date.now() - videoStartedAt) / 1000
+        const timerEl = document.getElementById("video-timer")
+        if (timerEl) timerEl.textContent = formatTime(elapsed)
+      }, 200)
+
+      if (composer) composer.hidden = true
+      if (videoRecordingUi) videoRecordingUi.hidden = false
+    } catch {
+      alert("Camera access denied or unavailable.")
+      cleanupVideoStream()
+    }
+  })
+
+  stopVideoBtn?.addEventListener("click", () => {
+    if (!videoMediaRecorder || videoMediaRecorder.state === "inactive") return
+
+    const recorder = videoMediaRecorder
+    const mime = recorder.mimeType || "video/webm"
+
+    recorder.addEventListener("stop", () => {
+      clearInterval(videoTimerInterval)
+      videoTimerInterval = null
+
+      const blob = new Blob(videoRecordedChunks, { type: mime })
+      cleanupVideoStream()
+      videoMediaRecorder = null
+      videoRecordedChunks = []
+
+      if (videoRecordingUi) videoRecordingUi.hidden = true
+      if (composer) composer.hidden = false
+
+      const ext = mime.includes("mp4") ? "mp4" : "webm"
+      const filename = `video-${Date.now()}.${ext}`
+      const file = new File([blob], filename, { type: mime })
+
+      showPendingMediaPreview(pendingPreview, file, "video")
+
+      const dt = new DataTransfer()
+      dt.items.add(file)
+      const videoInput = document.getElementById("message_media_video")
+      if (videoInput) {
+        videoInput.files = dt.files
+        videoInput.dispatchEvent(new Event("change", { bubbles: true }))
+      }
+    }, { once: true })
+
+    if (recorder.state === "recording") {
+      try { recorder.requestData() } catch { /* ignore */ }
+      recorder.stop()
+    }
+  })
+
+  cancelVideoBtn?.addEventListener("click", () => {
+    clearInterval(videoTimerInterval)
+    videoTimerInterval = null
+    if (videoMediaRecorder && videoMediaRecorder.state !== "inactive") {
+      videoMediaRecorder.stop()
+    }
+    cleanupVideoStream()
+    videoMediaRecorder = null
+    videoRecordedChunks = []
+    if (videoRecordingUi) videoRecordingUi.hidden = true
+    if (composer) composer.hidden = false
+  })
+}
+
+function cleanupVideoStream() {
+  if (videoStream) {
+    videoStream.getTracks().forEach((t) => t.stop())
+    videoStream = null
+  }
+  const videoPreviewEl = document.getElementById("video-preview-live")
+  if (videoPreviewEl) videoPreviewEl.srcObject = null
+}
+
+function initSwipeToReply(messagesEl) {
+  let touchStartX = 0
+  let touchStartY = 0
+  let swipeTarget = null
+  let swipeTriggered = false
+  const SWIPE_THRESHOLD = 55
+
+  messagesEl.addEventListener("touchstart", (e) => {
+    const touch = e.touches[0]
+    touchStartX = touch.clientX
+    touchStartY = touch.clientY
+    swipeTarget = e.target.closest(".msg")
+    swipeTriggered = false
+    if (swipeTarget) swipeTarget.style.transition = "none"
+  }, { passive: true })
+
+  messagesEl.addEventListener("touchmove", (e) => {
+    if (!swipeTarget) return
+    const touch = e.touches[0]
+    const dx = touch.clientX - touchStartX
+    const dy = Math.abs(touch.clientY - touchStartY)
+
+    if (dy > 20) {
+      swipeTarget.style.transform = ""
+      swipeTarget = null
+      return
+    }
+
+    if (Math.abs(dx) > 8) {
+      const capped = Math.max(-SWIPE_THRESHOLD, Math.min(SWIPE_THRESHOLD, dx * 0.6))
+      swipeTarget.style.transform = `translateX(${capped}px)`
+
+      if (!swipeTriggered && Math.abs(dx) >= SWIPE_THRESHOLD) {
+        swipeTriggered = true
+        openReplyFromArticle(swipeTarget)
+        if (navigator.vibrate) navigator.vibrate(30)
+      }
+    }
+  }, { passive: true })
+
+  const endSwipe = () => {
+    if (!swipeTarget) return
+    swipeTarget.style.transition = "transform 0.25s ease"
+    swipeTarget.style.transform = ""
+    swipeTarget = null
+    swipeTriggered = false
+  }
+
+  messagesEl.addEventListener("touchend", endSwipe, { passive: true })
+  messagesEl.addEventListener("touchcancel", endSwipe, { passive: true })
+}
+
+function initLongPressMultiSelect(messagesEl, roomId) {
+  const bulkBar = document.getElementById("bulk-action-bar")
+  const bulkCount = document.getElementById("bulk-count")
+  const bulkCancel = document.getElementById("bulk-cancel")
+  const bulkDelete = document.getElementById("bulk-delete")
+  const isAdmin = messagesEl.dataset.isAdmin === "true"
+  const currentUser = messagesEl.dataset.currentUser
+
+  let longPressTimer = null
+  const LONG_PRESS_MS = 600
+
+  function getSelectedIds() {
+    return [...messagesEl.querySelectorAll(".msg-checkbox:checked")].map((cb) => cb.value)
+  }
+
+  function updateBulkBar() {
+    const count = getSelectedIds().length
+    if (bulkCount) bulkCount.textContent = `${count} selected`
+    if (count === 0 && isSelectMode) exitSelectMode()
+  }
+
+  function enterSelectMode(article) {
+    if (isSelectMode) return
+    isSelectMode = true
+    if (navigator.vibrate) navigator.vibrate(60)
+    messagesEl.classList.add("is-select-mode")
+    bulkBar?.removeAttribute("hidden")
+    enableArticleSelect(article)
+  }
+
+  function enableArticleSelect(article) {
+    const label = article?.querySelector(".msg-select-check")
+    const checkbox = article?.querySelector(".msg-checkbox")
+    if (label) label.removeAttribute("hidden")
+    if (checkbox) {
+      checkbox.checked = true
+      article.classList.add("msg--selected")
+    }
+    updateBulkBar()
+  }
+
+  function exitSelectMode() {
+    isSelectMode = false
+    messagesEl.classList.remove("is-select-mode")
+    bulkBar?.setAttribute("hidden", "")
+    messagesEl.querySelectorAll(".msg-checkbox").forEach((cb) => {
+      cb.checked = false
+    })
+    messagesEl.querySelectorAll(".msg--selected").forEach((el) => el.classList.remove("msg--selected"))
+    messagesEl.querySelectorAll(".msg-select-check").forEach((el) => el.setAttribute("hidden", ""))
+    updateBulkBar()
+  }
+
+  // Show all select checkboxes in select mode
+  messagesEl.addEventListener("click", (e) => {
+    if (!isSelectMode) return
+    const article = e.target.closest(".msg")
+    if (!article) return
+    if (e.target.closest(".msg-select-check")) return  // handled by checkbox change
+
+    const author = article.dataset.author
+    const canDelete = article.dataset.canDelete === "true" || isAdmin || author === currentUser
+    if (!canDelete) return
+
+    const label = article.querySelector(".msg-select-check")
+    const checkbox = article.querySelector(".msg-checkbox")
+    if (!label || !checkbox) return
+    label.removeAttribute("hidden")
+    checkbox.checked = !checkbox.checked
+    article.classList.toggle("msg--selected", checkbox.checked)
+    updateBulkBar()
+  })
+
+  messagesEl.addEventListener("change", (e) => {
+    if (!e.target.classList.contains("msg-checkbox")) return
+    const article = e.target.closest(".msg")
+    if (article) article.classList.toggle("msg--selected", e.target.checked)
+    updateBulkBar()
+  })
+
+  messagesEl.addEventListener("touchstart", (e) => {
+    if (isSelectMode) return
+    const article = e.target.closest(".msg")
+    if (!article) return
+    if (e.target.closest(REPLY_INTERACTIVE_SELECTOR)) return
+
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null
+      enterSelectMode(article)
+    }, LONG_PRESS_MS)
+  }, { passive: true })
+
+  messagesEl.addEventListener("touchend", () => {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }, { passive: true })
+
+  messagesEl.addEventListener("touchmove", () => {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }, { passive: true })
+
+  // Also allow long press on desktop via mousedown/mouseup
+  messagesEl.addEventListener("mousedown", (e) => {
+    if (isSelectMode) return
+    const article = e.target.closest(".msg")
+    if (!article) return
+    if (e.target.closest(REPLY_INTERACTIVE_SELECTOR)) return
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null
+      enterSelectMode(article)
+    }, LONG_PRESS_MS)
+  })
+
+  messagesEl.addEventListener("mouseup", () => {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  })
+
+  bulkCancel?.addEventListener("click", exitSelectMode)
+
+  bulkDelete?.addEventListener("click", async () => {
+    const ids = getSelectedIds()
+    if (!ids.length) return
+    const bulkUrl = bulkDelete.dataset.bulkUrl
+    const token = document.querySelector('meta[name="csrf-token"]')?.content
+
+    try {
+      const response = await fetch(bulkUrl, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": token, Accept: "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ ids: ids.join(",") })
+      })
+      if (response.ok) {
+        const data = await response.json()
+        data.deleted_ids?.forEach((id) => removeMessageById(messagesEl, id))
+      }
+    } catch (err) {
+      console.error("Bulk delete failed:", err)
+    }
+    exitSelectMode()
   })
 }
 
@@ -1044,7 +1364,9 @@ function normalizeOwnMessageLayout(article, messagesEl) {
 }
 
 function ensureDeleteButton(article, messagesEl) {
-  if (!article.classList.contains("msg--own")) return
+  const isOwn = article.classList.contains("msg--own")
+  const isAdmin = messagesEl.dataset.isAdmin === "true"
+  if (!isOwn && !isAdmin) return
 
   const roomId = messagesEl.dataset.roomId
   const messageId = article.dataset.messageId

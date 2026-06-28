@@ -9,11 +9,45 @@
         <h1><%= @room.name %></h1>
         <p><span class="status-dot" aria-hidden="true"></span> Live · <%= current_user_name %></p>
       </div>
-      <span class="chat-topbar-live" aria-label="Connected">Online</span>
+      <div class="chat-topbar-actions">
+        <% if current_user_name.to_s.strip.downcase == "admin" %>
+          <%= button_to clear_messages_room_path(@room),
+                method: :post,
+                class: "icon-btn chat-topbar-clear",
+                title: "Clear chat history",
+                aria: { label: "Clear chat" },
+                form: { onsubmit: "return confirm('Clear all messages in this room?')", style: "display:inline" } do %>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+          <% end %>
+        <% end %>
+
+        <%# Call buttons — audio & video %>
+        <button type="button" class="icon-btn call-start-btn" data-call-action="start-audio" title="Audio call" aria-label="Start audio call">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.38 2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.77a16 16 0 0 0 6 6l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        </button>
+        <button type="button" class="icon-btn call-start-btn" data-call-action="start-video" title="Video call" aria-label="Start video call">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        </button>
+
+        <span class="chat-topbar-live" aria-label="Connected">Online</span>
+      </div>
     </header>
 
+    <%# Bulk select action bar — shown when messages are selected %>
+    <div id="bulk-action-bar" class="bulk-action-bar" hidden>
+      <span id="bulk-count" class="bulk-count">0 selected</span>
+      <div class="bulk-actions">
+        <button type="button" id="bulk-cancel" class="btn bulk-btn bulk-btn--cancel">Cancel</button>
+        <button type="button" id="bulk-delete" class="btn bulk-btn bulk-btn--delete"
+          data-bulk-url="<%= bulk_destroy_room_messages_path(@room) %>">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+          Delete Selected
+        </button>
+      </div>
+    </div>
+
     <div class="chat-feed-wrap">
-      <div id="messages" class="chat-feed" data-chat-room data-room-id="<%= @room.id %>" data-current-user="<%= current_user_name %>">
+      <div id="messages" class="chat-feed" data-chat-room data-room-id="<%= @room.id %>" data-current-user="<%= current_user_name %>" data-is-admin="<%= current_user_name.to_s.strip.downcase == "admin" %>">
         <% if @messages.empty? %>
           <div class="chat-empty" aria-hidden="false">
             <div class="chat-empty-icon" aria-hidden="true">💬</div>
@@ -70,6 +104,21 @@
           </button>
         </div>
 
+        <%# Video recording UI %>
+        <div id="video-recording-ui" class="video-recording-ui" hidden>
+          <button type="button" id="video-cancel" class="voice-action-btn" aria-label="Cancel video">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+          <div class="video-recording-main">
+            <video id="video-preview-live" class="video-preview-live" muted autoplay playsinline aria-hidden="true"></video>
+            <span class="voice-rec-dot" aria-hidden="true"></span>
+            <span id="video-timer" class="voice-timer">0:00</span>
+          </div>
+          <button type="button" id="stop-video" class="voice-action-btn voice-action-btn--send" aria-label="Stop video">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          </button>
+        </div>
+
         <div class="chat-composer" id="chat-composer">
           <details class="attach-dropdown">
             <summary class="icon-btn icon-btn--attach-toggle" aria-label="Attach file">
@@ -106,6 +155,10 @@
           <label class="sr-only" for="message_body">Message</label>
           <textarea name="message[body]" id="message_body" rows="1" placeholder="Message..."></textarea>
 
+          <button type="button" id="record-video" class="icon-btn" aria-label="Record video" title="Record video">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          </button>
+
           <button type="button" id="record-voice" class="icon-btn" aria-label="Record voice">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
           </button>
@@ -137,6 +190,74 @@
       <button type="button" class="media-lightbox-close" aria-label="Close">&times;</button>
       <div class="media-lightbox-body">
         <p class="media-lightbox-zoom-hint" id="media-lightbox-hint" hidden>Ctrl + scroll to zoom (up to 300%)</p>
+      </div>
+    </div>
+
+    <%# ── Incoming ring overlay ─────────────────────────────────────────────── %>
+    <div id="call-incoming-ring" class="call-ring" hidden role="dialog" aria-modal="true" aria-label="Incoming call">
+      <div class="call-ring-inner">
+        <div class="call-ring-avatar" aria-hidden="true">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        </div>
+        <p class="call-ring-caller">Someone</p>
+        <p class="call-ring-type">Video call</p>
+        <div class="call-ring-pulse" aria-hidden="true"></div>
+        <div class="call-ring-btns">
+          <button type="button" class="call-ring-btn call-ring-btn--reject" data-call-action="reject" aria-label="Decline call">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M1 1l22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.51 16.48a16 16 0 0 0 5.49 1.49"/><path d="M15.5 16.48c1.86-.48 3.68-1.5 5.5-1.49"/></svg>
+          </button>
+          <button type="button" class="call-ring-btn call-ring-btn--answer call-ring-btn--audio" data-call-action="answer-audio" aria-label="Answer audio only">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.38 2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.77a16 16 0 0 0 6 6l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          </button>
+          <button type="button" class="call-ring-btn call-ring-btn--answer" data-call-action="answer-video" aria-label="Answer with video">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <%# ── Active call overlay ─────────────────────────────────────────────── %>
+    <div id="call-overlay" class="call-overlay" hidden data-call-state="idle" role="dialog" aria-modal="true" aria-label="Active call">
+      <%# Remote full-screen feed %>
+      <div class="call-remote-wrap">
+        <video id="call-remote-video" class="call-remote-video" autoplay playsinline></video>
+        <div class="call-remote-placeholder" aria-hidden="true">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        </div>
+        <div class="call-remote-meta">
+          <span id="call-remote-name" class="call-remote-name">…</span>
+          <span id="call-timer" class="call-timer"></span>
+          <span class="call-state-label" data-show-on="calling">Calling…</span>
+          <span class="call-state-label" data-show-on="connected">Connected</span>
+        </div>
+      </div>
+
+      <%# Local PiP — draggable %>
+      <div id="call-local-pip" class="call-local-pip">
+        <video id="call-local-video" class="call-local-video" autoplay muted playsinline></video>
+        <div class="call-local-avatar" aria-hidden="true">
+          <span id="call-local-name" class="call-local-initial"><%= current_user_name.to_s.first.upcase %></span>
+        </div>
+      </div>
+
+      <%# Controls bar %>
+      <div class="call-controls">
+        <button id="call-mute-btn" type="button" class="call-ctrl-btn" data-call-action="mute" aria-label="Mute">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+          <span class="call-ctrl-label">Mute</span>
+        </button>
+        <button id="call-cam-btn" type="button" class="call-ctrl-btn" data-call-action="camera" aria-label="Turn off camera">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          <span class="call-ctrl-label">Camera</span>
+        </button>
+        <button type="button" class="call-ctrl-btn call-ctrl-btn--hangup" data-call-action="hangup" aria-label="End call">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.51 16.48a16 16 0 0 0 5.49 1.49M15.5 16.48c1.86-.48 3.68-1.5 5.5-1.49"/></svg>
+          <span class="call-ctrl-label">End</span>
+        </button>
+        <button id="call-speaker-btn" type="button" class="call-ctrl-btn" data-call-action="speaker" aria-label="Speaker">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          <span class="call-ctrl-label">Speaker</span>
+        </button>
       </div>
     </div>
   </main>

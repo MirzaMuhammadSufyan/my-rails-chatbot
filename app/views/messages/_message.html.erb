@@ -1,4 +1,5 @@
 <% own = defined?(current_user_name) && current_user_name.present? && message.user_name == current_user_name %>
+<% is_admin = defined?(current_user_name) && current_user_name.to_s.strip.downcase == "admin" %>
 <% initial = message.user_name.to_s.strip.first&.upcase || "?" %>
 <% hue = message.user_name.to_s.bytes.sum % 360 %>
 <% visual = message.media.attached? && message.content_type.in?(%w[image video]) %>
@@ -6,7 +7,12 @@
 <% media_url = message.media_proxy_path if message.media.attached? %>
 <% has_reply = message.reply_to.present? %>
 
-<article id="<%= dom_id(message) %>" class="msg<%= " msg--own" if own %><%= " msg--has-media" if message.media.attached? %><%= " msg--visual" if visual %>" data-message-id="<%= message.id %>" data-author="<%= message.user_name %>" data-reply-id="<%= message.id %>" data-reply-author="<%= message.user_name %>" data-reply-preview="<%= h(message.snippet) %>">
+<article id="<%= dom_id(message) %>" class="msg<%= " msg--own" if own %><%= " msg--has-media" if message.media.attached? %><%= " msg--visual" if visual %>" data-message-id="<%= message.id %>" data-author="<%= message.user_name %>" data-reply-id="<%= message.id %>" data-reply-author="<%= message.user_name %>" data-reply-preview="<%= h(message.snippet) %>" data-can-delete="<%= own || is_admin %>">
+  <label class="msg-select-check" aria-label="Select message" hidden>
+    <input type="checkbox" class="msg-checkbox" value="<%= message.id %>">
+    <span class="msg-checkbox-visual" aria-hidden="true"></span>
+  </label>
+
   <div class="msg-body">
     <div class="msg-stack">
       <% unless own %>
@@ -131,6 +137,11 @@
                   <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
                 </svg>
               </button>
+              <% if is_admin %>
+                <button type="button" class="msg-delete" data-delete-url="<%= room_message_path(message.room, message) %>" aria-label="Delete message" title="Delete (admin)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                </button>
+              <% end %>
             </div>
             <time class="msg-time" datetime="<%= message.created_at.iso8601 %>"><%= message.created_at.strftime("%H:%M") %></time>
           </div>

@@ -17,7 +17,7 @@
     <%= javascript_importmap_tags %>
   </head>
 
-  <body class="app<%= " app--auth" if controller_name == "sessions" %><%= " app--chat" if controller_name == "rooms" && action_name == "show" %><%= " app--rooms" if controller_name == "rooms" && action_name == "index" %>">
+  <body class="app<%= " app--auth" if controller_name == "sessions" || (controller_name == "rooms" && action_name == "password") %><%= " app--chat" if controller_name == "rooms" && action_name == "show" %><%= " app--rooms" if controller_name == "rooms" && action_name == "index" %>">
     <div class="app-glow" aria-hidden="true"></div>
     <%= yield %>
   </body>

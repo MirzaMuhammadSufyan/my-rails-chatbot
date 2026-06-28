@@ -1,0 +1,242 @@
+================================================================================
+  Render_TODO.txt — Production Setup for WebRTC Calling & Action Cable
+  Project: my-rails-chatbot
+================================================================================
+
+This file documents every step required on the Render dashboard and in your
+codebase to run real-time audio/video calling (WebRTC + Action Cable) reliably
+in production on Render.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 1 — Action Cable Adapter (solid_cable — already configured)
+────────────────────────────────────────────────────────────────────────────────
+
+Good news: this project already uses solid_cable (database-backed Action Cable)
+in production. That means:
+
+  - No Redis instance is needed.
+  - WebSocket connections are brokered through your existing PostgreSQL DB.
+  - The cable adapter is already set in config/cable.yml under `production`.
+
+  ✅ No Render Redis setup required for Action Cable.
+
+  Verify in config/cable.yml that production still reads:
+    adapter: solid_cable
+    connects_to:
+      database:
+        writing: cable
+    polling_interval: 0.05.seconds
+    message_retention: 1.day
+
+  If you later exceed ~100 concurrent users, consider switching to Redis-backed
+  Action Cable for lower latency. Steps for that are in SECTION 7.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 2 — Render Web Service Configuration
+────────────────────────────────────────────────────────────────────────────────
+
+  In the Render Dashboard → your Web Service → Settings:
+
+  2a. HTTP/2 & WebSocket support
+      Render supports WebSockets natively. No extra toggle is needed.
+      Puma (your web server) handles both HTTP and WS on the same port.
+
+  2b. Environment Variables
+      Go to Environment → Add the following if not already present:
+
+        SECRET_KEY_BASE=<generate with: bin/rails secret>
+        RAILS_ENV=production
+        RAILS_LOG_TO_STDOUT=true
+        WEB_CONCURRENCY=2            # puma worker count; 2 recommended on free/starter
+        RAILS_MAX_THREADS=5
+        DATABASE_URL=<auto-set by Render PostgreSQL — verify it exists>
+        RAILS_SERVE_STATIC_FILES=true
+
+      Optional (for Active Storage on S3):
+        AWS_ACCESS_KEY_ID=<your key>
+        AWS_SECRET_ACCESS_KEY=<your secret>
+        AWS_REGION=<your region>
+        AWS_BUCKET=<your bucket name>
+
+  2c. Build Command
+      Ensure your Render build command runs migrations:
+        bundle install && bundle exec rails assets:precompile && bundle exec rails db:migrate
+
+  2d. Start Command
+        bundle exec puma -C config/puma.rb
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 3 — Puma Configuration (for WebSocket concurrency)
+────────────────────────────────────────────────────────────────────────────────
+
+  WebSocket connections are long-lived. Puma must be configured with enough
+  threads to handle concurrent connections without blocking.
+
+  Check config/puma.rb — it should include:
+
+    max_threads_count = ENV.fetch("RAILS_MAX_THREADS") { 5 }
+    min_threads_count = ENV.fetch("RAILS_MIN_THREADS") { max_threads_count }
+    threads min_threads_count, max_threads_count
+    workers ENV.fetch("WEB_CONCURRENCY") { 2 }
+    preload_app!
+
+  With WEB_CONCURRENCY=2 and RAILS_MAX_THREADS=5 you get up to 10 concurrent
+  WebSocket connections per dyno. Scale WEB_CONCURRENCY for more capacity.
+
+  NOTE: solid_cable uses a background thread per worker to poll the DB.
+  This is fine for low-to-medium traffic but adds DB load. Monitor in Render's
+  Metrics tab.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 4 — PostgreSQL (Cable Database)
+────────────────────────────────────────────────────────────────────────────────
+
+  solid_cable stores Action Cable messages in a `cable` database.
+
+  4a. Check config/database.yml has a `cable` key under production:
+
+      production:
+        primary:
+          <<: *default
+          url: <%= ENV["DATABASE_URL"] %>
+        cable:
+          <<: *default
+          url: <%= ENV["DATABASE_URL"] %>    # same DB is fine for low traffic
+          migrations_paths: db/cable_migrate
+
+  4b. Run migrations on first deploy:
+        bin/rails db:migrate
+
+  4c. For high-traffic apps (100+ users), use a SEPARATE Render PostgreSQL
+      instance for the cable database and set its URL in a separate env var:
+        CABLE_DATABASE_URL=<separate render pg url>
+      Then update database.yml cable.url to use CABLE_DATABASE_URL.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 5 — WebRTC / STUN / TURN Setup
+────────────────────────────────────────────────────────────────────────────────
+
+  The WebRTC peer connection uses free public STUN servers (already in code):
+    stun:stun.l.google.com:19302
+    stun:stun1.l.google.com:19302
+    stun:stun.relay.metered.ca:80
+
+  5a. STUN servers (FREE — no setup needed)
+      STUN works for most peer-to-peer connections where both users are on
+      home broadband or WiFi. No Render configuration required.
+
+  5b. TURN server (REQUIRED for mobile data / corporate firewalls)
+      When users are behind strict NAT or mobile carrier NAT, WebRTC needs a
+      TURN relay server. STUN alone will fail ~15-20% of connections.
+
+      FREE TURN option: metered.ca/turn (1 GB/month free)
+        1. Sign up at https://www.metered.ca/turn
+        2. Create a TURN application, note the credentials
+        3. Add to Render environment variables:
+             TURN_URL=turn:openrelay.metered.ca:80
+             TURN_USERNAME=<from metered dashboard>
+             TURN_CREDENTIAL=<from metered dashboard>
+
+      Then update the STUN_SERVERS array in video_call_controller.js:
+        const STUN = [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: process.env.TURN_URL || "turn:openrelay.metered.ca:80",
+            username: process.env.TURN_USERNAME || "...",
+            credential: process.env.TURN_CREDENTIAL || "..." }
+        ]
+
+      NOTE: Since this is a Rails importmap app (no Node build step), you
+      should either:
+        (a) Expose TURN credentials via a JSON endpoint in your Rails API:
+              GET /api/turn_credentials → { urls, username, credential }
+            Then fetch them in video_call_controller.js at init time.
+        (b) Embed them in the ERB layout as a <meta> tag (less secure).
+        Option (a) is strongly preferred for production.
+
+  5c. Render does NOT block WebRTC UDP ports. WebRTC STUN/TURN works fine
+      through Render's networking layer.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 6 — HTTPS (Required for WebRTC)
+────────────────────────────────────────────────────────────────────────────────
+
+  navigator.mediaDevices.getUserMedia() and RTCPeerConnection ONLY work on
+  HTTPS origins (or localhost). Render automatically provides TLS on
+  *.onrender.com domains.
+
+  ✅ If you are using the default onrender.com domain, you are already on HTTPS.
+
+  If using a custom domain:
+    - Add your domain in Render → Settings → Custom Domains
+    - Render auto-provisions a Let's Encrypt TLS certificate
+    - Ensure no mixed-content (HTTP resources on an HTTPS page)
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 7 — Optional: Migrate to Redis-backed Action Cable (high traffic)
+────────────────────────────────────────────────────────────────────────────────
+
+  If solid_cable polling creates DB bottlenecks at scale, switch to Redis:
+
+  7a. Create a Redis instance on Render:
+        Render Dashboard → New → Redis → Choose plan → Note the Internal URL
+
+  7b. Add to Render env vars:
+        REDIS_URL=<your internal redis URL from Render>
+
+  7c. Add to Gemfile:
+        gem "redis"
+
+  7d. Update config/cable.yml production block:
+        production:
+          adapter: redis
+          url: <%= ENV.fetch("REDIS_URL") %>
+          channel_prefix: chatbot_production
+
+  7e. Remove solid_cable gem if you switch (or keep both, redis takes priority).
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 8 — Deployment Checklist
+────────────────────────────────────────────────────────────────────────────────
+
+  Before deploying calling feature to production, verify:
+
+  [ ] SECRET_KEY_BASE is set in Render environment variables
+  [ ] DATABASE_URL is set (auto-set by Render PostgreSQL attachment)
+  [ ] RAILS_ENV=production is set
+  [ ] bin/rails db:migrate runs in build command
+  [ ] Puma WEB_CONCURRENCY >= 2
+  [ ] Custom domain is on HTTPS (or using onrender.com domain)
+  [ ] TURN credentials added if supporting mobile users (Section 5b)
+  [ ] Tested locally with two different browser tabs / devices
+  [ ] Tested on mobile (both WiFi and mobile data if possible)
+  [ ] Verified ActionCable connects (check browser DevTools → Network → WS)
+  [ ] Verified camera/microphone permissions prompt appears correctly
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 9 — Troubleshooting
+────────────────────────────────────────────────────────────────────────────────
+
+  PROBLEM: Call rings but never connects
+  SOLUTION: Add TURN server credentials (Section 5b). This is the #1 cause
+            of WebRTC failures on mobile data networks.
+
+  PROBLEM: Action Cable disconnects frequently
+  SOLUTION: Set CABLE_KEEPALIVE_PINGS=true in env. Render load balancers
+            have a 55-second idle timeout; Action Cable pings every 3s by
+            default which keeps connections alive.
+
+  PROBLEM: Camera not accessible on mobile Safari
+  SOLUTION: Ensure HTTPS. Safari requires getUserMedia on HTTPS only, and
+            requires the user to explicitly grant permission per-origin.
+
+  PROBLEM: "NotReadableError: Could not start video source" on mobile
+  SOLUTION: Another app is using the camera. The call overlay should handle
+            this and show a toast. Ask user to close other camera apps.
+
+  PROBLEM: solid_cable not delivering messages to all users
+  SOLUTION: Increase polling_interval in cable.yml (lower number = more
+            frequent polling but higher DB load). Default 0.05s is fine.
+
+================================================================================
+  End of Render_TODO.txt
+================================================================================
