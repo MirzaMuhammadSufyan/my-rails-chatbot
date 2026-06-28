@@ -3,10 +3,12 @@ class CallChannel < ApplicationCable::Channel
     @room = Room.find_by(id: params[:room_id])
     return reject unless @room
 
+    Rails.logger.info("[CallChannel] subscribed: user=#{current_user_name.inspect} room=#{@room.id}")
     stream_for @room
   end
 
   def unsubscribed
+    Rails.logger.info("[CallChannel] unsubscribed: user=#{current_user_name.inspect} room=#{@room&.id}")
     stop_all_streams
   end
 

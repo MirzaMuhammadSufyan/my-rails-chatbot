@@ -1,12 +1,14 @@
 class ChatChannel < ApplicationCable::Channel
   def subscribed
     @room = Room.find(params[:room_id])
+    Rails.logger.info("[ChatChannel] subscribed: user=#{current_user_name.inspect} room=#{@room.id}")
     stream_for @room
   rescue ActiveRecord::RecordNotFound
     reject
   end
 
   def unsubscribed
+    Rails.logger.info("[ChatChannel] unsubscribed: user=#{current_user_name.inspect} room=#{@room&.id}")
     stop_all_streams
   end
 
