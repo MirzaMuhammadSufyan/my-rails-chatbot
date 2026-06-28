@@ -102,26 +102,27 @@ async function getMediaStream({ audio = true, video = false, deviceId = null }) 
 async function switchCamera() {
   if (!localStream) return
 
-  // On mobile, facingMode toggle is reliable. On desktop, cycle by deviceId.
-  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+  const nextFacing = currentFacingMode === "user" ? "environment" : "user"
+  const oldVideoTrack = localStream.getVideoTracks()[0]
 
-  let constraints
-  if (isMobile) {
-    currentFacingMode = currentFacingMode === "user" ? "environment" : "user"
-    constraints = { video: { facingMode: { exact: currentFacingMode } }, audio: false }
-  } else {
-    await updateVideoDevices()
-    if (videoDevices.length < 2) { toast("No other camera available."); return }
-    const currentIndex = videoDevices.findIndex((d) => d.deviceId === selectedVideoDeviceId)
-    const nextIndex = (currentIndex + 1) % videoDevices.length
-    selectedVideoDeviceId = videoDevices[nextIndex].deviceId
-    constraints = { video: { deviceId: { exact: selectedVideoDeviceId } }, audio: false }
+  // Try applyConstraints first (no new stream needed, works on most mobile browsers)
+  if (oldVideoTrack) {
+    try {
+      await oldVideoTrack.applyConstraints({ facingMode: { ideal: nextFacing } })
+      currentFacingMode = nextFacing
+      attachLocal(localStream)
+      toast(`Switched to ${nextFacing === "user" ? "front" : "back"} camera`)
+      return
+    } catch { /* fall through to full track replacement */ }
   }
 
+  // Full replacement: stop old track, get new stream with ideal facingMode
   try {
-    const videoOnlyStream = await navigator.mediaDevices.getUserMedia(constraints)
-    const newVideoTrack = videoOnlyStream.getVideoTracks()[0]
-    const oldVideoTrack = localStream.getVideoTracks()[0]
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: nextFacing } },
+      audio: false
+    })
+    const newVideoTrack = newStream.getVideoTracks()[0]
 
     if (oldVideoTrack) {
       localStream.removeTrack(oldVideoTrack)
@@ -136,16 +137,11 @@ async function switchCamera() {
       pc.addTrack(newVideoTrack, localStream)
     }
 
+    currentFacingMode = nextFacing
     attachLocal(localStream)
-    toast(isMobile ? `Switched to ${currentFacingMode === "user" ? "front" : "back"} camera` : "Camera switched")
-  } catch (error) {
-    // exact facingMode failed — try without exact (some devices need this)
-    if (isMobile && error.name === "OverconstrainedError") {
-      currentFacingMode = currentFacingMode === "user" ? "environment" : "user"
-      toast("Only one camera available.")
-    } else {
-      toast("Could not switch camera.")
-    }
+    toast(`Switched to ${nextFacing === "user" ? "front" : "back"} camera`)
+  } catch {
+    toast("Could not switch camera.")
   }
 }
 
@@ -411,10 +407,7 @@ function toggleCamera() {
 }
 
 function switchCameraAction() {
-  if (!isVideoCall) {
-    toast("Switch camera only works during a video call.")
-    return
-  }
+  if (!isVideoCall) { toast("Switch camera only works during a video call."); return }
   switchCamera()
 }
 
