@@ -50,11 +50,8 @@ function subscribeCallChannel() {
   callSub = consumer.subscriptions.create(
     { channel: "CallChannel", room_id: roomId },
     {
-      connected() { console.log('[Call] CallChannel connected, room:', roomId) },
-      rejected() { console.error('[Call] CallChannel subscription REJECTED') },
       received(data) {
-        console.log('[Call] signal received:', data.type, 'from:', data.from, 'myName:', myName)
-        if (data.from === myName) { console.log('[Call] ignoring own echo'); return }
+        if (data.from === myName) return
         switch (data.type) {
           case "call-offer":    return onOffer(data)
           case "call-answer":   return onAnswer(data)
@@ -69,8 +66,7 @@ function subscribeCallChannel() {
 }
 
 function send(payload) {
-  const result = callSub?.perform("signal", { ...payload, from: myName })
-  console.log('[Call] send', payload.type, '→ callSub perform result:', result)
+  callSub?.perform("signal", { ...payload, from: myName })
 }
 
 async function updateVideoDevices() {
@@ -296,7 +292,6 @@ function createPc() {
 // ─── Incoming signal handlers ─────────────────────────────────────────────────
 
 async function onOffer(data) {
-  console.log('[Call] onOffer called, state:', state, 'from:', data.from)
   if (state !== S.IDLE) { send({ type: "call-busy" }); return }
   peerName = data.from
   incomingOfferHasVideo = Boolean(data.video)

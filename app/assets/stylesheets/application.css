@@ -2658,6 +2658,9 @@ body.pending-media-open {
 .call-start-btn {
   color: var(--accent-2);
   opacity: 0.85;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  touch-action: manipulation;
 }
 
 .call-start-btn:hover {
@@ -2669,14 +2672,19 @@ body.pending-media-open {
 
 .call-ring {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 9000;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.72);
+  background: rgba(0, 0, 0, 0.82);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  /* cover safe areas on notched phones */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 .call-ring[hidden] {
@@ -2756,6 +2764,7 @@ body.pending-media-open {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  touch-action: manipulation;
   transition: transform 0.15s var(--ease), opacity 0.15s;
   color: #fff;
 }
@@ -2780,11 +2789,16 @@ body.pending-media-open {
 
 .call-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 8000;
   display: flex;
   flex-direction: column;
   background: #000;
+  /* respect notch/home bar on mobile */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .call-overlay[hidden] {
@@ -2940,12 +2954,14 @@ body.pending-media-open {
   align-items: center;
   gap: 0.3rem;
   min-width: 3.25rem;
+  min-height: 2.75rem;
   padding: 0.65rem;
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 50px;
   cursor: pointer;
+  touch-action: manipulation;
   transition: background 0.15s, transform 0.1s;
 }
 
