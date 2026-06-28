@@ -21,6 +21,7 @@ const S = { IDLE: "idle", CALLING: "calling", RINGING: "ringing", CONNECTED: "co
 let state = S.IDLE
 let localStream = null
 let pc = null
+let remoteStream = null
 let myName = null
 let peerName = null
 let audioOnly = false
@@ -258,11 +259,21 @@ function createPc() {
   }
 
   conn.ontrack = (e) => {
-    console.debug('[Call] ontrack', e)
-    const stream = e.streams[0] || new MediaStream([e.track])
+    console.debug('[Call] ontrack', { track: e.track, streams: e.streams })
+    if (!remoteStream) {
+      remoteStream = new MediaStream()
+    }
+    if (e.streams?.[0]) {
+      remoteStream = e.streams[0]
+    } else {
+      remoteStream.addTrack(e.track)
+    }
+
     const rv = document.getElementById("call-remote-video")
     if (rv) {
-      rv.srcObject = stream
+      if (rv.srcObject !== remoteStream) {
+        rv.srcObject = remoteStream
+      }
       rv.play().catch((err) => console.warn('[Call] remote video play failed', err))
     }
     if (state !== S.CONNECTED) {
@@ -439,6 +450,7 @@ function attachLocal(stream) {
 function cleanup() {
   pc?.close(); pc = null
   localStream?.getTracks().forEach((t) => t.stop()); localStream = null
+  remoteStream = null
   pendingCandidates = []
   peerName = null
   incomingOfferHasVideo = false
