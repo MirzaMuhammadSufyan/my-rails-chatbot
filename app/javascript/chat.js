@@ -74,18 +74,21 @@ export function initChat(roomId) {
     { channel: "ChatChannel", room_id: roomId },
     {
       connected() {
+        console.info('[Chat] ActionCable connected')
         setConnectionStatus(true)
       },
       disconnected() {
+        console.warn('[Chat] ActionCable disconnected')
         setConnectionStatus(false)
       },
       rejected() {
+        console.error('[Chat] ChatChannel subscription rejected')
         setConnectionStatus(false)
-        console.error("ChatChannel subscription rejected")
       },
       received(data) {
         // WebRTC call signals ride the same channel — forward via DOM event
         if (data.call_signal) {
+          console.debug('[Chat] incoming call_signal', data)
           document.dispatchEvent(new CustomEvent("call:incoming-signal", { detail: data }))
           return
         }
@@ -105,7 +108,12 @@ export function initChat(roomId) {
 
   // Forward outgoing call signals from video_call_controller through this subscription
   document.addEventListener("call:send-signal", (e) => {
-    chatSub.perform("call_signal", e.detail)
+    console.debug('[Chat] sending call_signal', e.detail)
+    try {
+      chatSub.perform("call_signal", e.detail)
+    } catch (err) {
+      console.error('[Chat] failed to perform call_signal', err)
+    }
   })
 
   form.addEventListener("submit", async (event) => {

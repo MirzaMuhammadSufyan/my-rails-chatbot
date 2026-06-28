@@ -15,6 +15,8 @@ class ChatChannel < ApplicationCable::Channel
   def call_signal(data)
     return unless @room
 
+    Rails.logger.info("[ChatChannel#call_signal] received from=#{current_user_name} data_type=#{data['type']}")
+
     payload = {
       "call_signal" => true,
       "type"        => data["type"].to_s,
@@ -27,6 +29,7 @@ class ChatChannel < ApplicationCable::Channel
     end
 
     ChatChannel.broadcast_to(@room, payload)
+    Rails.logger.info("[ChatChannel#call_signal] broadcast to room=#{@room.id} type=#{payload['type']}")
   rescue StandardError => e
     Rails.logger.error("[ChatChannel#call_signal] #{e.class}: #{e.message}")
   end
